@@ -854,7 +854,7 @@ html, body {
         <span class="contador-item contador-mal">❌ <span id="pqIncorrectas">0</span></span>
       </div>
       <div class="timer-wrap">
-        <div class="timer-numero" id="timerNumero">60s</div>
+        <div class="timer-numero" id="timerNumero"></div>
       </div>
     </div>
     <div class="timer-barra-wrap">
@@ -1176,7 +1176,7 @@ function mostrarPreguntaActual() {
   document.getElementById('preguntaScroll').scrollTo(0, 0);
 
   // Iniciar timer
-  iniciarTimer(tiempoRestante);
+  // iniciarTimer(tiempoRestante); Cambio version 1.1
 }
 
 /* ============================================================
@@ -1236,7 +1236,7 @@ function tiempoAgotado() {
    RESPONDER
    ============================================================ */
 function responder(letra) {
-  detenerTimer();
+  //detenerTimer(); cambio version 1.1
   const p = preguntasMateria[indiceActual];
   const esCorrecta = letra === p.correcta;
 
@@ -1563,7 +1563,7 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) detenerTimer();
   else if (document.getElementById('pPregunta').classList.contains('activa')) {
     const retro = document.getElementById('retroCard');
-    if (!retro.classList.contains('show')) iniciarTimer(tiempoRestante);
+    //if (!retro.classList.contains('show')) iniciarTimer(tiempoRestante); Cambio version 1.1
   }
 });
 
