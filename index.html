@@ -444,7 +444,7 @@ html, body {
 .contador-mal { color: var(--rojo); }
 
 /* Timer */
-.timer-wrap { display: flex; align-items: center; gap: 10px; }
+.timer-wrap { display: none; }
 .timer-numero {
   font-family: var(--fuente-titulo);
   font-size: 20px;
@@ -456,11 +456,7 @@ html, body {
 }
 .timer-numero.amarillo { color: var(--naranja); }
 .timer-numero.rojo     { color: var(--rojo); }
-.timer-barra-wrap {
-  flex: 1; height: 8px;
-  background: var(--crema-oscura);
-  border-radius: 4px; overflow: hidden;
-}
+.timer-barra-wrap { display: none; }
 .timer-barra {
   height: 100%;
   border-radius: 4px;
@@ -719,6 +715,66 @@ html, body {
 /* ============================================================
    RESPONSIVE — pantallas grandes
    ============================================================ */
+
+/* ============================================================
+   MODO REPASO — estilos adicionales
+   ============================================================ */
+.btn-repaso {
+  background: linear-gradient(135deg, var(--naranja), #e8943a);
+  color: var(--blanco);
+  font-size: 13px;
+  padding: 12px 14px;
+  flex: 1;
+  box-shadow: 0 3px 8px rgba(196,122,26,0.25);
+}
+.btn-repaso:hover { box-shadow: 0 5px 14px rgba(196,122,26,0.38); }
+
+.repaso-chip {
+  display: inline-block;
+  background: var(--naranja-claro);
+  color: var(--naranja);
+  border: 1px solid var(--naranja);
+  font-size: 11px; font-weight: 700;
+  padding: 3px 10px; border-radius: 12px;
+  margin-bottom: 6px;
+  letter-spacing: .3px;
+}
+.repaso-chip-progreso {
+  display: inline-block;
+  background: rgba(196,122,26,0.12);
+  color: var(--naranja);
+  font-size: 11px; font-weight: 600;
+  padding: 2px 8px; border-radius: 10px;
+  margin-left: 6px;
+}
+
+/* Banner modo repaso en pantalla pregunta */
+.banner-repaso {
+  background: linear-gradient(135deg, var(--naranja), #e8943a);
+  color: var(--blanco);
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 5px 16px;
+  letter-spacing: .5px;
+  display: none;
+}
+.banner-repaso.visible { display: block; }
+
+/* Resultado repaso header diferenciado */
+.resultado-header.repaso-header {
+  background: linear-gradient(135deg, #7a3f00, var(--naranja));
+}
+.resultado-repaso-comparacion {
+  background: rgba(255,255,255,0.15);
+  border-radius: 10px;
+  padding: 10px 16px;
+  margin-top: 12px;
+  font-size: 13px;
+  text-align: left;
+}
+.resultado-repaso-comparacion div { margin-bottom: 4px; }
+
 @media (min-width: 480px) {
   .inicio-hero { padding: 48px 40px 56px; }
   .inicio-body, .materias-body, .pregunta-body, .resultado-body, .resultado-footer { padding: 20px; max-width: 560px; margin-left: auto; margin-right: auto; }
@@ -808,7 +864,7 @@ html, body {
     </div>
 
     <div style="text-align:center; margin-top:20px; font-size:11px; color:var(--texto-claro); letter-spacing:.5px;">
-      v1.0 · 1 minuto por pregunta · Almacenamiento local
+      v1.1 · Sin límite de tiempo · Almacenamiento local
     </div>
   </div>
 </div>
@@ -846,6 +902,9 @@ html, body {
     </div>
   </div>
 
+  <!-- Banner modo repaso -->
+  <div class="banner-repaso" id="bannerRepaso">🔁 MODO REPASO — Solo preguntas incorrectas</div>
+
   <!-- Header con timer y progreso -->
   <div class="pregunta-header">
     <div class="pregunta-meta">
@@ -853,12 +912,6 @@ html, body {
         <span class="contador-item contador-ok">✅ <span id="pqCorrectas">0</span></span>
         <span class="contador-item contador-mal">❌ <span id="pqIncorrectas">0</span></span>
       </div>
-      <div class="timer-wrap">
-        <div class="timer-numero" id="timerNumero"></div>
-      </div>
-    </div>
-    <div class="timer-barra-wrap">
-      <div class="timer-barra" id="timerBarra"></div>
     </div>
     <div class="progreso-preguntas" style="margin-top:8px;">
       <div class="progreso-preguntas-barra">
@@ -913,6 +966,11 @@ html, body {
   </div>
 
   <div class="resultado-footer">
+    <div id="btnRepasoWrap" style="margin-bottom:10px; display:none;">
+      <button class="btn btn-repaso" onclick="iniciarRepaso(materiaResultadoActual)">
+        🔁 Repasar errores (<span id="cntErroresRepaso">0</span> preguntas)
+      </button>
+    </div>
     <button class="btn btn-primario" onclick="irA('pMaterias')">← Volver a Materias</button>
   </div>
 </div>
@@ -924,9 +982,11 @@ html, body {
 /* ============================================================
    ESTADO GLOBAL
    ============================================================ */
-const STORAGE_KEY   = 'entrenador_banco';
-const PROGRESO_KEY  = 'entrenador_progreso';
-const RESPUESTAS_KEY= 'entrenador_respuestas';
+const STORAGE_KEY    = 'entrenador_banco';
+const PROGRESO_KEY   = 'entrenador_progreso';
+const RESPUESTAS_KEY = 'entrenador_respuestas';
+const REPASO_PROG_KEY= 'entrenador_repaso_prog';
+const REPASO_RESP_KEY= 'entrenador_repaso_resp';
 const TIEMPO_POR_PREGUNTA = 60;
 
 let banco = [];          // [{id,materia,nivelBloom,n,pregunta,a,b,c,d,correcta,retro}]
@@ -942,12 +1002,20 @@ let noContestadas = 0;
 let timerInterval = null;
 let tiempoRestante = TIEMPO_POR_PREGUNTA;
 
+// Modo repaso
+let modoRepaso = false;           // true = sesión de repaso activa
+let repasoProgreso = {};          // { materia: {indice, correctas, incorrectas, noContestadas, completada, tiempoRestante} }
+let repasoRespuestas = {};        // { materia: [{preguntaId, respuesta, esCorrecta, agotado}] }
+let materiaResultadoActual = '';  // materia que se muestra en resultado
+
 /* ============================================================
    PERSISTENCIA — LocalStorage
    ============================================================ */
-function guardarBanco()     { try { localStorage.setItem(STORAGE_KEY,    JSON.stringify(banco)); } catch(e){} }
-function guardarProgreso()  { try { localStorage.setItem(PROGRESO_KEY,   JSON.stringify(progreso)); } catch(e){} }
-function guardarRespuestas(){ try { localStorage.setItem(RESPUESTAS_KEY, JSON.stringify(respuestas)); } catch(e){} }
+function guardarBanco()        { try { localStorage.setItem(STORAGE_KEY,     JSON.stringify(banco)); } catch(e){} }
+function guardarProgreso()     { try { localStorage.setItem(PROGRESO_KEY,    JSON.stringify(progreso)); } catch(e){} }
+function guardarRespuestas()   { try { localStorage.setItem(RESPUESTAS_KEY,  JSON.stringify(respuestas)); } catch(e){} }
+function guardarRepasoProgreso(){ try { localStorage.setItem(REPASO_PROG_KEY, JSON.stringify(repasoProgreso)); } catch(e){} }
+function guardarRepasoResp()   { try { localStorage.setItem(REPASO_RESP_KEY,  JSON.stringify(repasoRespuestas)); } catch(e){} }
 
 function cargarDesdeStorage() {
   try {
@@ -957,6 +1025,10 @@ function cargarDesdeStorage() {
     if (p) progreso = JSON.parse(p);
     const r = localStorage.getItem(RESPUESTAS_KEY);
     if (r) respuestas = JSON.parse(r);
+    const rp = localStorage.getItem(REPASO_PROG_KEY);
+    if (rp) repasoProgreso = JSON.parse(rp);
+    const rr = localStorage.getItem(REPASO_RESP_KEY);
+    if (rr) repasoRespuestas = JSON.parse(rr);
   } catch(e) { console.error('Storage error', e); }
 }
 
@@ -1076,9 +1148,44 @@ function renderMaterias() {
       barraW = Math.round(pg.correctas * 100 / total);
       estadoHtml = `<div class="materia-estado estado-completa">✅ Completada</div>`;
       calHtml = `<span class="calificacion-chip">📊 ${pg.correctas} / ${total} correctas · ${barraW}%</span>`;
+
+      // Calcular errores para mostrar estado de repaso
+      const rpg = repasoProgreso[mat];
+      const erroresOriginales = obtenerIdsErrores(mat);
+      let repasoHtml = '';
+      if (erroresOriginales.length > 0) {
+        if (!rpg) {
+          repasoHtml = `<div><span class="repaso-chip">🔁 Repaso disponible</span> <span style="font-size:11px;color:var(--texto-claro)">${erroresOriginales.length} preguntas incorrectas</span></div>`;
+        } else if (rpg.completada) {
+          const rpct = Math.round(rpg.correctas * 100 / erroresOriginales.length);
+          repasoHtml = `<div><span class="repaso-chip">🔁 Repaso completado</span> <span style="font-size:11px;color:var(--naranja)">${rpg.correctas}/${erroresOriginales.length} · ${rpct}%</span></div>`;
+        } else {
+          repasoHtml = `<div><span class="repaso-chip">🔁 Repaso en progreso</span><span class="repaso-chip-progreso">${rpg.indice}/${erroresOriginales.length}</span></div>`;
+        }
+      }
+      calHtml += repasoHtml;
+
+      // Botón de repaso directo según estado
+      let btnRepasoDirecto = '';
+      if (erroresOriginales.length > 0) {
+        if (!rpg || rpg.completada) {
+          // Repaso disponible o reiniciar repaso
+          const labelRepaso = rpg && rpg.completada
+            ? `🔁 Repetir repaso`
+            : `🔁 Repasar (${erroresOriginales.length})`;
+          btnRepasoDirecto = `<button class="btn btn-repaso" style="margin-top:8px;" onclick="iniciarRepaso('${escapar(mat)}')">${labelRepaso}</button>`;
+        } else {
+          // Repaso en progreso — continuar
+          btnRepasoDirecto = `<button class="btn btn-repaso" style="margin-top:8px;" onclick="iniciarRepaso('${escapar(mat)}')">🔁 Continuar repaso (${rpg.indice}/${erroresOriginales.length})</button>`;
+        }
+      }
+
       botonesHtml = `
-        <button class="btn btn-secundario" onclick="verResultado('${escapar(mat)}')">📄 Ver Resultado</button>
+        <button class="btn btn-secundario" style="flex:1" onclick="verResultado('${escapar(mat)}')">📄 Ver Resultado</button>
         <button class="btn-reset-materia" onclick="confirmarResetMateria('${escapar(mat)}')">↺</button>`;
+      if (btnRepasoDirecto) {
+        botonesHtml += `</div><div class="materia-acciones" style="margin-top:0;">` + btnRepasoDirecto;
+      }
     } else {
       const respo = pg.indice;
       barraW = Math.round(respo * 100 / total);
@@ -1102,10 +1209,30 @@ function renderMaterias() {
 
 function escapar(str) { return str.replace(/'/g, "\\'"); }
 
+
+/* ============================================================
+   HELPERS REPASO
+   ============================================================ */
+// Devuelve array de IDs de preguntas incorrectas/agotadas de una materia
+function obtenerIdsErrores(mat) {
+  const resps = respuestas[mat] || [];
+  return resps
+    .filter(r => !r.esCorrecta)
+    .map(r => r.preguntaId);
+}
+
+// Devuelve las preguntas del banco que corresponden a errores, en orden
+function obtenerPreguntasRepaso(mat) {
+  const ids = obtenerIdsErrores(mat);
+  const todasPreguntas = banco.filter(p => p.materia === mat).sort((a,b) => a.n - b.n);
+  return todasPreguntas.filter(p => ids.includes(p.id));
+}
+
 /* ============================================================
    INICIAR MATERIA / SESIÓN DE PREGUNTAS
    ============================================================ */
 function iniciarMateria(mat) {
+  modoRepaso    = false;
   materiaActual = mat;
   preguntasMateria = banco.filter(p => p.materia === mat).sort((a,b) => a.n - b.n);
 
@@ -1133,6 +1260,61 @@ function iniciarMateria(mat) {
   mostrarPreguntaActual();
 }
 
+
+/* ============================================================
+   INICIAR REPASO DE ERRORES
+   ============================================================ */
+function iniciarRepaso(mat) {
+  const pregsError = obtenerPreguntasRepaso(mat);
+  if (pregsError.length === 0) {
+    toast('✅ ¡No hay errores que repasar en esta materia!');
+    return;
+  }
+
+  modoRepaso       = true;
+  materiaActual    = mat;
+  preguntasMateria = pregsError;
+
+  const rpg = repasoProgreso[mat];
+  if (rpg && !rpg.completada) {
+    // Continuar repaso donde quedó
+    indiceActual      = rpg.indice;
+    correctasActual   = rpg.correctas;
+    incorrectasActual = rpg.incorrectas;
+    noContestadas     = rpg.noContestadas;
+    tiempoRestante    = rpg.tiempoRestante || TIEMPO_POR_PREGUNTA;
+  } else {
+    // Nuevo intento de repaso — reinicia contadores pero mantiene historial anterior
+    indiceActual      = 0;
+    correctasActual   = 0;
+    incorrectasActual = 0;
+    noContestadas     = 0;
+    tiempoRestante    = TIEMPO_POR_PREGUNTA;
+    // Limpiar respuestas del repaso anterior para este intento fresco
+    repasoRespuestas[mat] = [];
+    guardarRepasoResp();
+    // Limpiar progreso para empezar fresco
+    delete repasoProgreso[mat];
+    guardarRepasoProgreso();
+  }
+
+  if (indiceActual >= preguntasMateria.length) {
+    // Ya estaba terminado — nuevo intento desde cero
+    indiceActual      = 0;
+    correctasActual   = 0;
+    incorrectasActual = 0;
+    noContestadas     = 0;
+    tiempoRestante    = TIEMPO_POR_PREGUNTA;
+    repasoRespuestas[mat] = [];
+    delete repasoProgreso[mat];
+    guardarRepasoProgreso();
+    guardarRepasoResp();
+  }
+
+  irA('pPregunta');
+  mostrarPreguntaActual();
+}
+
 /* ============================================================
    MOSTRAR PREGUNTA
    ============================================================ */
@@ -1140,8 +1322,15 @@ function mostrarPreguntaActual() {
   const p = preguntasMateria[indiceActual];
   if (!p) { terminarMateria(); return; }
 
+  // Banner repaso
+  const banner = document.getElementById('bannerRepaso');
+  if (modoRepaso) banner.classList.add('visible');
+  else            banner.classList.remove('visible');
+
   // Labels cabecera
-  document.getElementById('pqMateriaLabel').textContent = materiaActual;
+  document.getElementById('pqMateriaLabel').textContent = modoRepaso
+    ? '🔁 ' + materiaActual
+    : materiaActual;
   document.getElementById('pqNivelBloom').textContent   = p.nivelBloom || '';
   document.getElementById('pqBloom').textContent        = 'Nivel: ' + (p.nivelBloom || '—');
   document.getElementById('pqTexto').textContent        = p.pregunta;
@@ -1176,67 +1365,33 @@ function mostrarPreguntaActual() {
   document.getElementById('preguntaScroll').scrollTo(0, 0);
 
   // Iniciar timer
-  // iniciarTimer(tiempoRestante); Cambio version 1.1
+  iniciarTimer(tiempoRestante);
 }
 
 /* ============================================================
    TIMER
    ============================================================ */
 function iniciarTimer(segundos) {
-  detenerTimer();
-  tiempoRestante = segundos;
-  actualizarUITimer();
-
-  timerInterval = setInterval(() => {
-    tiempoRestante--;
-    actualizarUITimer();
-    if (tiempoRestante <= 0) {
-      detenerTimer();
-      tiempoAgotado();
-    }
-  }, 1000);
+  // Timer eliminado — sin límite de tiempo
 }
 
 function detenerTimer() {
-  if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+  // Timer eliminado
 }
 
 function actualizarUITimer() {
-  const num   = document.getElementById('timerNumero');
-  const barra = document.getElementById('timerBarra');
-  const pct   = (tiempoRestante / TIEMPO_POR_PREGUNTA) * 100;
-
-  num.textContent = tiempoRestante + 's';
-  barra.style.width = pct + '%';
-
-  let clase = 'verde';
-  if (tiempoRestante <= 10) clase = 'rojo';
-  else if (tiempoRestante <= 30) clase = 'amarillo';
-
-  num.className   = 'timer-numero ' + (clase !== 'verde' ? clase : '');
-  barra.className = 'timer-barra '  + (clase !== 'verde' ? clase : '');
+  // Timer eliminado
 }
 
 function tiempoAgotado() {
-  detenerTimer();
-  const p = preguntasMateria[indiceActual];
-  noContestadas++;
-  guardarRespuestaActual('TIEMPO', false, true);
-  guardarEstadoActual();
-
-  mostrarRetro('tiempo', null, p.correcta, p.retro);
-  deshabilitarOpciones();
-  marcarCorrecta(p.correcta);
-  document.getElementById('btnSiguiente').style.display = 'flex';
-  document.getElementById('pqCorrectas').textContent   = correctasActual;
-  document.getElementById('pqIncorrectas').textContent = incorrectasActual;
+  // Timer eliminado — esta función ya no se llama
 }
 
 /* ============================================================
    RESPONDER
    ============================================================ */
 function responder(letra) {
-  //detenerTimer(); cambio version 1.1
+  detenerTimer();
   const p = preguntasMateria[indiceActual];
   const esCorrecta = letra === p.correcta;
 
@@ -1332,7 +1487,7 @@ function siguientePregunta() {
    ============================================================ */
 function terminarMateria() {
   detenerTimer();
-  progreso[materiaActual] = {
+  const estadoFinal = {
     indice:        preguntasMateria.length,
     correctas:     correctasActual,
     incorrectas:   incorrectasActual,
@@ -1340,15 +1495,22 @@ function terminarMateria() {
     completada:    true,
     tiempoRestante: TIEMPO_POR_PREGUNTA
   };
-  guardarProgreso();
-  verResultado(materiaActual);
+  if (modoRepaso) {
+    repasoProgreso[materiaActual] = estadoFinal;
+    guardarRepasoProgreso();
+    verResultadoRepaso(materiaActual);
+  } else {
+    progreso[materiaActual] = estadoFinal;
+    guardarProgreso();
+    verResultado(materiaActual);
+  }
 }
 
 /* ============================================================
    GUARDAR ESTADO INTERMEDIO
    ============================================================ */
 function guardarEstadoActual() {
-  progreso[materiaActual] = {
+  const estado = {
     indice:        indiceActual,
     correctas:     correctasActual,
     incorrectas:   incorrectasActual,
@@ -1356,13 +1518,18 @@ function guardarEstadoActual() {
     completada:    false,
     tiempoRestante
   };
-  guardarProgreso();
+  if (modoRepaso) {
+    repasoProgreso[materiaActual] = estado;
+    guardarRepasoProgreso();
+  } else {
+    progreso[materiaActual] = estado;
+    guardarProgreso();
+  }
 }
 
 function guardarRespuestaActual(resp, esCorrecta, agotado) {
-  if (!respuestas[materiaActual]) respuestas[materiaActual] = [];
   const p = preguntasMateria[indiceActual];
-  respuestas[materiaActual].push({
+  const entrada = {
     preguntaId: p.id,
     n: p.n,
     pregunta: p.pregunta,
@@ -1371,14 +1538,24 @@ function guardarRespuestaActual(resp, esCorrecta, agotado) {
     esCorrecta,
     agotado,
     retro: p.retro
-  });
-  guardarRespuestas();
+  };
+  if (modoRepaso) {
+    if (!repasoRespuestas[materiaActual]) repasoRespuestas[materiaActual] = [];
+    repasoRespuestas[materiaActual].push(entrada);
+    guardarRepasoResp();
+  } else {
+    if (!respuestas[materiaActual]) respuestas[materiaActual] = [];
+    respuestas[materiaActual].push(entrada);
+    guardarRespuestas();
+  }
 }
 
 /* ============================================================
    PANTALLA RESULTADO
    ============================================================ */
 function verResultado(mat) {
+  materiaResultadoActual = mat;
+  modoRepaso = false;
   const pg    = progreso[mat] || {};
   const total = banco.filter(p => p.materia === mat).length;
   const correctas = pg.correctas || 0;
@@ -1443,8 +1620,154 @@ function verResultado(mat) {
     lista.appendChild(item);
   });
 
+  // Mostrar botón de repaso si hay errores
+  const erroresIds = obtenerIdsErrores(mat);
+  const btnRepasoWrap = document.getElementById('btnRepasoWrap');
+  const cntErrores    = document.getElementById('cntErroresRepaso');
+  const resHeaderEl   = document.querySelector('#pResultado .resultado-header');
+  resHeaderEl.classList.remove('repaso-header');
+  if (erroresIds.length > 0) {
+    btnRepasoWrap.style.display = 'block';
+    cntErrores.textContent = erroresIds.length;
+  } else {
+    btnRepasoWrap.style.display = 'none';
+  }
+
   irA('pResultado');
 }
+
+/* ============================================================
+   RESULTADO REPASO
+   ============================================================ */
+function verResultadoRepaso(mat) {
+  materiaResultadoActual = mat;
+  const rpg    = repasoProgreso[mat] || {};
+  const pregsR = obtenerPreguntasRepaso(mat);
+  const total  = pregsR.length;
+  const correctas = rpg.correctas || 0;
+  const pct    = total > 0 ? Math.round(correctas * 100 / total) : 0;
+
+  // Header con estilo naranja
+  document.getElementById('resMateria').textContent      = '🔁 Repaso — ' + mat;
+  document.getElementById('resCalificacion').textContent = correctas + ' / ' + total;
+  document.getElementById('resPct').textContent          = pct + '%';
+
+  const resHeaderEl = document.querySelector('#pResultado .resultado-header');
+  resHeaderEl.classList.add('repaso-header');
+
+  setTimeout(() => {
+    document.getElementById('resBarraFill').style.width = pct + '%';
+  }, 100);
+
+  const cal = document.getElementById('resCalificacion');
+  cal.style.color = pct >= 70 ? '#8effc2' : pct >= 50 ? '#e8d08a' : '#ffaaaa';
+
+  // Comparación con intento original
+  const pgOrig  = progreso[mat] || {};
+  const totOrig = banco.filter(p => p.materia === mat).length;
+  const pctOrig = totOrig > 0 ? Math.round((pgOrig.correctas||0) * 100 / totOrig) : 0;
+
+  document.getElementById('resultado-cal-label-el') &&
+    (document.getElementById('resultado-cal-label-el').textContent = 'correctas en repaso');
+
+  // Lista de resultados del repaso
+  const lista = document.getElementById('listaResultados');
+  lista.innerHTML = '';
+
+  // Comparación al inicio
+  const compDiv = document.createElement('div');
+  compDiv.className = 'resultado-repaso-comparacion';
+  compDiv.innerHTML = `
+    <div>📊 <strong>Intento original:</strong> ${pgOrig.correctas||0} / ${totOrig} (${pctOrig}%)</div>
+    <div>🔁 <strong>Este repaso:</strong> ${correctas} / ${total} (${pct}%)</div>`;
+  lista.appendChild(compDiv);
+
+  const respsRepaso = repasoRespuestas[mat] || [];
+  pregsR.forEach(p => {
+    const r = respsRepaso.find(x => x.preguntaId === p.id);
+    const esCorrecta = r && r.esCorrecta;
+    const agotado    = r && r.agotado;
+
+    let icono = '❌', estadoClass = 'estado-mal', estadoTxt = 'Incorrecta';
+    if (esCorrecta)  { icono = '✅'; estadoClass = 'estado-ok';    estadoTxt = 'Correcta en repaso'; }
+    if (agotado)     { icono = '⏱️'; estadoClass = 'estado-tiempo'; estadoTxt = 'Tiempo agotado'; }
+
+    let respInfo = '';
+    if (!esCorrecta && r) {
+      respInfo = `<div class="resultado-item-respuesta">
+        Tu respuesta: Opción ${r.respuesta === 'TIEMPO' ? '—' : r.respuesta} &nbsp;|&nbsp; Correcta: Opción ${p.correcta}
+      </div>`;
+    }
+
+    const item = document.createElement('div');
+    item.className = 'resultado-item';
+    item.innerHTML = `
+      <div class="resultado-item-header" onclick="toggleResultado(this)">
+        <div class="resultado-item-icono">${icono}</div>
+        <div class="resultado-item-info">
+          <div class="resultado-item-num">Pregunta ${p.n}</div>
+          <div class="resultado-item-estado ${estadoClass}">${estadoTxt}</div>
+        </div>
+        <div class="resultado-item-toggle">▼</div>
+      </div>
+      <div class="resultado-item-body">
+        <div class="resultado-item-pregunta">${p.pregunta}</div>
+        ${respInfo}
+        <div class="resultado-item-retro">${p.retro || '—'}</div>
+      </div>`;
+    lista.appendChild(item);
+  });
+
+  // Botón de nuevo repaso (ilimitado)
+  const btnRepasoWrap = document.getElementById('btnRepasoWrap');
+  const cntErrores    = document.getElementById('cntErroresRepaso');
+  const erroresNuevos = obtenerIdsErroresRepaso(mat);
+  if (erroresNuevos.length > 0) {
+    btnRepasoWrap.style.display = 'block';
+    cntErrores.textContent = erroresNuevos.length;
+    document.querySelector('#btnRepasoWrap .btn-repaso').onclick = () => iniciarRepasoDeRepaso(mat);
+    document.querySelector('#btnRepasoWrap .btn-repaso').innerHTML =
+      '🔁 Repasar errores del repaso (<span id="cntErroresRepaso">' + erroresNuevos.length + '</span> preguntas)';
+  } else {
+    btnRepasoWrap.style.display = 'none';
+  }
+
+  irA('pResultado');
+}
+
+// IDs de errores del último repaso
+function obtenerIdsErroresRepaso(mat) {
+  const resps = repasoRespuestas[mat] || [];
+  return resps.filter(r => !r.esCorrecta).map(r => r.preguntaId);
+}
+
+// Repaso de un repaso — usa los errores del último repaso como nueva fuente
+function iniciarRepasoDeRepaso(mat) {
+  const idsError = obtenerIdsErroresRepaso(mat);
+  if (idsError.length === 0) {
+    toast('✅ ¡Sin errores en el repaso!');
+    return;
+  }
+  // Convertir los errores del repaso en la nueva fuente de respuestas "originales"
+  // Actualizamos respuestas[mat] para que incluya los errores del repaso
+  // de modo que obtenerPreguntasRepaso() los recoja
+  const respsRepaso = repasoRespuestas[mat] || [];
+  // Marcar en respuestas originales los que siguen incorrectos
+  respsRepaso.forEach(rr => {
+    if (!rr.esCorrecta && respuestas[mat]) {
+      const idx = respuestas[mat].findIndex(r => r.preguntaId === rr.preguntaId);
+      if (idx >= 0) respuestas[mat][idx].esCorrecta = false;
+    }
+  });
+  guardarRespuestas();
+  // Iniciar nuevo repaso desde cero
+  repasoRespuestas[mat] = [];
+  delete repasoProgreso[mat];
+  guardarRepasoResp();
+  guardarRepasoProgreso();
+  iniciarRepaso(mat);
+}
+
 
 function var_css(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
 
@@ -1459,10 +1782,14 @@ function toggleResultado(header) {
    RESET
    ============================================================ */
 function resetearTodo() {
-  progreso   = {};
-  respuestas = {};
+  progreso         = {};
+  respuestas       = {};
+  repasoProgreso   = {};
+  repasoRespuestas = {};
   guardarProgreso();
   guardarRespuestas();
+  guardarRepasoProgreso();
+  guardarRepasoResp();
   actualizarUIInicio();
   toast('✅ Progreso reseteado correctamente');
 }
@@ -1470,12 +1797,16 @@ function resetearTodo() {
 function confirmarResetMateria(mat) {
   confirmar(
     `Resetear "${mat}"`,
-    `¿Borrar el progreso de esta materia? Podrá volver a practicarla desde el inicio.`,
+    `¿Borrar el progreso de esta materia? Se borrará también el historial de repaso.`,
     () => {
       delete progreso[mat];
       delete respuestas[mat];
+      delete repasoProgreso[mat];
+      delete repasoRespuestas[mat];
       guardarProgreso();
       guardarRespuestas();
+      guardarRepasoProgreso();
+      guardarRepasoResp();
       renderMaterias();
       toast('✅ Materia reseteada');
     }
@@ -1496,6 +1827,7 @@ function irA(pantallaId) {
 function salirDePregunta() {
   detenerTimer();
   guardarEstadoActual();
+  modoRepaso = false;
   irA('pMaterias');
 }
 
@@ -1558,14 +1890,7 @@ window.addEventListener('load', () => {
   actualizarUIInicio();
 });
 
-// Pausar timer al salir de la pestaña
-document.addEventListener('visibilitychange', () => {
-  if (document.hidden) detenerTimer();
-  else if (document.getElementById('pPregunta').classList.contains('activa')) {
-    const retro = document.getElementById('retroCard');
-    //if (!retro.classList.contains('show')) iniciarTimer(tiempoRestante); Cambio version 1.1
-  }
-});
+// Timer eliminado — sin pausa de visibilidad necesaria
 
 /* ============================================================
    ANDROID WEBVIEW BRIDGE
