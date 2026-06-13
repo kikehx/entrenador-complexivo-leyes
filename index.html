@@ -4,1666 +4,1965 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
-<title>Polla Mundial 2026 🏆</title>
-<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&family=Oswald:wght@400;600;700&display=swap" rel="stylesheet"/>
+<title>Entrenador Complexivo · PANDA</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Source+Sans+3:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<!-- SheetJS para leer Excel -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js">
+/* ============================================================
+   ANDROID WEBVIEW BRIDGE
+   Detecta si corre dentro de un WebView Android y usa
+   la interfaz nativa para abrir el selector de archivos.
+   ============================================================ */
+const ES_ANDROID_WEBVIEW = (typeof Android !== 'undefined');
+
+function abrirSelectorArchivo() {
+  if (ES_ANDROID_WEBVIEW) {
+    // Llama al método nativo de Android
+    Android.abrirSelectorExcel();
+  } else {
+    // Navegador normal — selector HTML estándar
+    document.getElementById('inputExcel').click();
+  }
+}
+
+// Llamado desde Android cuando el usuario selecciona un archivo
+// El contenido viene en base64
+function recibirArchivoDesdeAndroid(base64Data, nombreArchivo) {
+  mostrarSpinner(true);
+  try {
+    const wb   = XLSX.read(base64Data, { type: 'base64' });
+    const ws   = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+    const nuevas = [];
+    for (let i = 1; i < rows.length; i++) {
+      const r = rows[i];
+      const id = parseInt(r[0]);
+      if (isNaN(id) || !r[4]) continue;
+      const correcta = String(r[9]).trim().toUpperCase();
+      if (!['A','B','C','D'].includes(correcta)) continue;
+      nuevas.push({
+        id,
+        materia:   String(r[1]).trim(),
+        nivelBloom:String(r[2]).trim(),
+        n:         parseInt(r[3]) || i,
+        pregunta:  String(r[4]).trim(),
+        a:         String(r[5]).trim(),
+        b:         String(r[6]).trim(),
+        c:         String(r[7]).trim(),
+        d:         String(r[8]).trim(),
+        correcta,
+        retro:     String(r[10]).trim()
+      });
+    }
+
+    if (nuevas.length === 0) {
+      mostrarSpinner(false);
+      toast('❌ No se encontraron preguntas válidas');
+      return;
+    }
+
+    banco = nuevas;
+    progreso = {};
+    respuestas = {};
+    guardarBanco();
+    guardarProgreso();
+    guardarRespuestas();
+    actualizarUIInicio();
+    mostrarSpinner(false);
+    toast('✅ ' + nuevas.length + ' preguntas cargadas');
+
+  } catch(err) {
+    mostrarSpinner(false);
+    toast('❌ Error al leer el archivo: ' + err.message);
+    console.error(err);
+  }
+}
+
+</script>
 <style>
-:root{--rojo:#c0392b;--rojo-cla:#fdecea;--dorado:#f39c12;--dorado-cla:#fef9e7;--verde:#27ae60;--verde-cla:#eafaf1;--azul:#2980b9;--azul-cla:#eaf4fb;--oscuro:#1a1a2e;--medio:#16213e;--cla:#0f3460;--gris:#ecf0f1;--blanco:#ffffff;--texto:#2c3e50;--texto-cla:#7f8c8d;--radio:12px;--radio-g:18px;--sombra:0 4px 20px rgba(0,0,0,0.12);}
-*{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:'Inter',sans-serif;background:#f0f2f5;color:var(--texto);min-height:100vh;}
-.pantalla{display:none;min-height:100vh;flex-direction:column;}
-.pantalla.activa{display:flex;}
-.hero{background:linear-gradient(135deg,var(--oscuro),var(--cla));color:#fff;padding:32px 20px 28px;text-align:center;position:relative;overflow:hidden;}
-.hero::before{content:'⚽';position:absolute;font-size:200px;opacity:.04;top:-30px;right:-40px;line-height:1;}
-.hero-badge{display:inline-block;background:var(--dorado);color:var(--oscuro);font-family:'Oswald',sans-serif;font-size:11px;font-weight:600;letter-spacing:2px;text-transform:uppercase;padding:4px 14px;border-radius:20px;margin-bottom:10px;}
-.hero h1{font-family:'Bebas Neue',sans-serif;font-size:52px;letter-spacing:2px;line-height:1;margin-bottom:4px;}
-.hero h1 span{color:var(--dorado);}
-.hero-sub{font-size:13px;opacity:.7;letter-spacing:.5px;}
-.hero-bandera{font-size:28px;margin-bottom:8px;display:flex;gap:6px;justify-content:center;}
-.sync-bar{background:rgba(255,255,255,.1);padding:6px 16px;display:flex;align-items:center;justify-content:center;gap:8px;font-size:11px;color:rgba(255,255,255,.8);}
-.sync-dot{width:8px;height:8px;border-radius:50%;background:#888;}
-.sync-dot.verde{background:var(--verde);}
-.sync-dot.rojo{background:var(--rojo);}
-.sync-dot.amarillo{background:var(--dorado);animation:pulsar .8s infinite alternate;}
-@keyframes pulsar{from{opacity:.4}to{opacity:1}}
-.nav-tabs{display:flex;background:var(--oscuro);overflow-x:auto;scrollbar-width:none;border-bottom:2px solid rgba(255,255,255,.08);position:sticky;top:0;z-index:100;}
-.nav-tabs::-webkit-scrollbar{display:none;}
-.nav-tab{flex:1;min-width:70px;padding:13px 8px;background:none;border:none;color:rgba(255,255,255,.5);font-family:'Inter',sans-serif;font-size:12px;font-weight:600;cursor:pointer;transition:all .2s;text-align:center;letter-spacing:.3px;border-bottom:3px solid transparent;display:flex;flex-direction:column;align-items:center;gap:3px;}
-.nav-tab span.ico{font-size:18px;}
-.nav-tab:hover{color:rgba(255,255,255,.8);}
-.nav-tab.activo{color:var(--dorado);border-bottom-color:var(--dorado);}
-.contenido{padding:16px;max-width:680px;margin:0 auto;width:100%;flex:1;}
-.card{background:var(--blanco);border-radius:var(--radio-g);box-shadow:var(--sombra);padding:20px;margin-bottom:16px;border:1px solid rgba(0,0,0,.06);}
-.card-titulo{font-family:'Oswald',sans-serif;font-size:18px;font-weight:600;color:var(--oscuro);margin-bottom:16px;display:flex;align-items:center;gap:10px;}
-.card-titulo .ico{font-size:22px;}
-.perfil-wrap{text-align:center;padding:24px 20px;}
-.avatar-grande{width:100px;height:100px;border-radius:50%;background:linear-gradient(135deg,var(--dorado),var(--rojo));display:flex;align-items:center;justify-content:center;font-size:40px;margin:0 auto 16px;border:4px solid var(--blanco);box-shadow:0 4px 20px rgba(0,0,0,.2);cursor:pointer;overflow:hidden;position:relative;}
-.avatar-grande img{width:100%;height:100%;object-fit:cover;border-radius:50%;}
-.avatar-overlay{position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.5);color:#fff;font-size:10px;padding:4px;text-align:center;opacity:0;transition:opacity .2s;}
-.avatar-grande:hover .avatar-overlay{opacity:1;}
-.perfil-nombre{font-family:'Oswald',sans-serif;font-size:24px;color:var(--oscuro);}
-.perfil-pts{font-size:13px;color:var(--texto-cla);margin-top:4px;}
-.perfil-stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:20px;}
-.stat-box{background:var(--gris);border-radius:var(--radio);padding:12px;text-align:center;}
-.stat-num{font-family:'Oswald',sans-serif;font-size:26px;font-weight:700;color:var(--oscuro);}
-.stat-lbl{font-size:11px;color:var(--texto-cla);text-transform:uppercase;letter-spacing:.5px;margin-top:2px;}
-.fecha-banner{background:linear-gradient(90deg,var(--oscuro),var(--cla));color:#fff;padding:8px 16px;border-radius:var(--radio);margin-bottom:12px;font-size:12px;font-weight:600;letter-spacing:.5px;display:flex;align-items:center;gap:8px;}
-.partido-card{background:var(--blanco);border-radius:var(--radio);border:1px solid rgba(0,0,0,.08);padding:14px 16px;margin-bottom:10px;transition:box-shadow .2s;}
-.partido-card:hover{box-shadow:0 4px 16px rgba(0,0,0,.1);}
-.partido-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
-.partido-grupo{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--texto-cla);}
-.partido-estado{font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;}
-.estado-pendiente{background:#fff3cd;color:#856404;}
-.estado-jugado{background:var(--verde-cla);color:var(--verde);}
-.estado-cerrado{background:#f8d7da;color:var(--rojo);}
-.partido-equipos{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px;}
-.equipo{text-align:center;}
-.equipo-bandera{font-size:32px;display:block;line-height:1.2;}
-.equipo-nombre{font-size:13px;font-weight:600;color:var(--texto);margin-top:4px;}
-.marcador-wrap{display:flex;align-items:center;gap:6px;}
-.marcador-inp{width:48px;height:48px;text-align:center;font-family:'Bebas Neue',sans-serif;font-size:28px;border:2px solid var(--gris);border-radius:10px;color:var(--oscuro);background:var(--gris);outline:none;transition:all .2s;-moz-appearance:textfield;}
-.marcador-inp::-webkit-inner-spin-button,.marcador-inp::-webkit-outer-spin-button{-webkit-appearance:none;}
-.marcador-inp:focus{border-color:var(--dorado);background:var(--dorado-cla);}
-.marcador-inp:disabled{opacity:.5;cursor:not-allowed;}
-.marcador-sep{font-family:'Bebas Neue',sans-serif;font-size:24px;color:var(--texto-cla);}
-.btn-guardar-partido{width:100%;margin-top:10px;padding:9px;background:var(--oscuro);color:var(--dorado);border:none;border-radius:var(--radio);font-family:'Oswald',sans-serif;font-size:14px;font-weight:600;cursor:pointer;letter-spacing:.5px;transition:all .2s;}
-.btn-guardar-partido:hover{background:var(--cla);}
-.btn-guardar-partido:disabled{background:var(--gris);color:var(--texto-cla);cursor:not-allowed;}
-.tabla-pos{width:100%;border-collapse:collapse;}
-.tabla-pos th{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--texto-cla);padding:8px 10px;text-align:left;border-bottom:2px solid var(--gris);}
-.tabla-pos td{padding:10px;border-bottom:1px solid var(--gris);font-size:14px;}
-.tabla-pos tr:last-child td{border-bottom:none;}
-.tabla-pos tr:hover td{background:#f8f9fa;}
-.pos-num{font-family:'Oswald',sans-serif;font-size:18px;font-weight:700;color:var(--texto-cla);width:30px;}
-.pos-1 .pos-num{color:var(--dorado);}
-.pos-2 .pos-num{color:#95a5a6;}
-.pos-3 .pos-num{color:#cd7f32;}
-.avatar-mini{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,var(--dorado),var(--rojo));display:flex;align-items:center;justify-content:center;font-size:16px;overflow:hidden;flex-shrink:0;}
-.avatar-mini img{width:100%;height:100%;object-fit:cover;}
-.jugador-info{display:flex;align-items:center;gap:10px;}
-.jugador-nombre{font-weight:600;font-size:14px;}
-.pts-badge{font-family:'Oswald',sans-serif;font-size:20px;font-weight:700;color:var(--oscuro);text-align:right;}
-.pts-sub{font-size:11px;color:var(--texto-cla);}
-.campo{margin-bottom:16px;}
-.campo label{display:block;font-size:13px;font-weight:600;color:var(--texto);margin-bottom:6px;}
-.campo input,.campo select,.campo textarea{width:100%;padding:12px 14px;border:2px solid var(--gris);border-radius:var(--radio);font-family:'Inter',sans-serif;font-size:14px;color:var(--texto);background:var(--blanco);outline:none;transition:border-color .2s;}
-.campo input:focus,.campo select:focus,.campo textarea:focus{border-color:var(--dorado);}
-.campo .error-msg{font-size:12px;color:var(--rojo);margin-top:5px;display:none;font-weight:500;}
-.campo.invalido input,.campo.invalido select,.campo.invalido textarea{border-color:var(--rojo);}
-.campo.invalido .error-msg{display:block;}
-.campo.valido input{border-color:var(--verde);}
-.btn{display:flex;align-items:center;justify-content:center;gap:8px;padding:14px 20px;border-radius:var(--radio);border:none;font-family:'Oswald',sans-serif;font-size:16px;font-weight:600;cursor:pointer;transition:all .2s;letter-spacing:.5px;width:100%;}
-.btn:active{transform:scale(.97);}
-.btn:disabled{opacity:.4;cursor:not-allowed;transform:none;}
-.btn-dorado{background:var(--dorado);color:var(--oscuro);}
-.btn-dorado:hover{background:#e67e22;}
-.btn-oscuro{background:var(--oscuro);color:var(--dorado);}
-.btn-oscuro:hover{background:var(--medio);}
-.btn-rojo{background:var(--rojo);color:#fff;}
-.btn-rojo:hover{background:#a93226;}
-.btn-ghost{background:transparent;color:var(--texto-cla);border:2px solid var(--gris);}
-.btn-google{background:#fff;color:#444;border:2px solid #ddd;display:flex;align-items:center;justify-content:center;gap:10px;padding:13px 20px;border-radius:var(--radio);font-family:'Inter',sans-serif;font-size:15px;font-weight:600;cursor:pointer;transition:all .2s;width:100%;}
-.btn-google:hover{box-shadow:0 2px 12px rgba(0,0,0,.15);border-color:#bbb;}
-.btn-google svg{width:20px;height:20px;flex-shrink:0;}
-.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(10px);padding:12px 22px;border-radius:24px;font-size:13px;font-weight:600;z-index:9999;opacity:0;transition:opacity .3s,transform .3s;white-space:nowrap;max-width:90vw;text-align:center;pointer-events:none;}
-.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
-.toast.exito{background:var(--verde);color:#fff;}
-.toast.error{background:var(--rojo);color:#fff;}
-.toast.info{background:var(--oscuro);color:var(--dorado);}
-.toast.alerta{background:var(--dorado);color:var(--oscuro);}
-.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:8000;display:none;align-items:center;justify-content:center;padding:20px;}
-.modal-overlay.activo{display:flex;}
-.modal-box{background:var(--blanco);border-radius:var(--radio-g);padding:28px;width:100%;max-width:420px;box-shadow:0 20px 60px rgba(0,0,0,.3);}
-.modal-titulo{font-family:'Oswald',sans-serif;font-size:22px;color:var(--oscuro);margin-bottom:10px;}
-.modal-texto{font-size:14px;color:var(--texto-cla);margin-bottom:22px;line-height:1.6;}
-.modal-botones{display:flex;gap:10px;}
-#spinner{position:fixed;inset:0;background:rgba(26,26,46,.85);z-index:9500;display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;}
-#spinner.show{display:flex;}
-.spin{width:40px;height:40px;border:4px solid rgba(255,255,255,.2);border-top-color:var(--dorado);border-radius:50%;animation:girar .8s linear infinite;}
-@keyframes girar{to{transform:rotate(360deg);}}
-.spin-txt{color:#fff;font-family:'Oswald',sans-serif;font-size:16px;letter-spacing:.5px;}
-.admin-row{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--gris);}
-.admin-row:last-child{border-bottom:none;}
-.admin-lbl{font-weight:600;font-size:14px;}
-.admin-val{font-size:13px;color:var(--texto-cla);}
-.chip{display:inline-block;padding:3px 12px;border-radius:20px;font-size:12px;font-weight:600;}
-.chip-verde{background:var(--verde-cla);color:var(--verde);}
-.chip-rojo{background:var(--rojo-cla);color:var(--rojo);}
-.chip-amarillo{background:#fff3cd;color:#856404;}
-.pronostico-resultado{font-family:'Oswald',sans-serif;font-size:16px;font-weight:700;}
-.pronostico-exacto{color:var(--verde);}
-.pronostico-ganador{color:var(--dorado);}
-.pronostico-fallo{color:var(--rojo);}
-.pronostico-pendiente{color:var(--texto-cla);}
-.sec-titulo{font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:1px;color:var(--oscuro);margin-bottom:4px;display:flex;align-items:center;gap:10px;}
-.sec-sub{font-size:13px;color:var(--texto-cla);margin-bottom:20px;}
-.grupo-header{background:linear-gradient(90deg,var(--oscuro),var(--cla));color:#fff;padding:10px 16px;border-radius:var(--radio) var(--radio) 0 0;font-family:'Oswald',sans-serif;font-size:15px;font-weight:600;letter-spacing:1px;display:flex;align-items:center;gap:8px;}
-.grupo-body{background:var(--blanco);border-radius:0 0 var(--radio) var(--radio);border:1px solid rgba(0,0,0,.08);border-top:none;margin-bottom:16px;overflow:hidden;}
-.info-banner{background:var(--azul-cla);border-left:4px solid var(--azul);padding:12px 16px;border-radius:0 var(--radio) var(--radio) 0;margin-bottom:16px;font-size:13px;color:var(--azul);line-height:1.6;}
-.warn-banner{background:#fff3cd;border-left:4px solid var(--dorado);padding:12px 16px;border-radius:0 var(--radio) var(--radio) 0;margin-bottom:16px;font-size:13px;color:#856404;line-height:1.6;}
-.foto-btn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:16px;border:2px dashed var(--gris);border-radius:var(--radio);cursor:pointer;color:var(--texto-cla);font-size:13px;transition:all .2s;}
-.foto-btn:hover{border-color:var(--dorado);color:var(--dorado);}
-.foto-btn .ico-cam{font-size:28px;}
-#inputFoto{display:none;}
-.puntos-tabla{border-collapse:collapse;width:100%;}
-.puntos-tabla td{padding:8px 12px;font-size:13px;border-bottom:1px solid var(--gris);}
-.puntos-tabla td:first-child{font-weight:600;}
-.puntos-tabla td:last-child{font-family:'Oswald',sans-serif;font-size:18px;color:var(--dorado);text-align:right;}
-.cuenta-regresiva{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px;}
-.cr-box{background:var(--oscuro);border-radius:var(--radio);padding:14px 8px;text-align:center;}
-.cr-num{font-family:'Bebas Neue',sans-serif;font-size:36px;color:var(--dorado);line-height:1;}
-.cr-lbl{font-size:10px;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.8px;margin-top:2px;}
-.barra-wrap{background:var(--gris);border-radius:20px;height:8px;overflow:hidden;margin-top:4px;}
-.barra-fill{height:100%;border-radius:20px;background:linear-gradient(90deg,var(--dorado),var(--rojo));transition:width .5s;}
-.filtros{display:flex;gap:8px;margin-bottom:16px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px;}
-.filtros::-webkit-scrollbar{display:none;}
-.filtro-btn{padding:7px 16px;border-radius:20px;border:2px solid var(--gris);background:var(--blanco);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;transition:all .2s;font-family:'Inter',sans-serif;color:var(--texto-cla);}
-.filtro-btn.activo{background:var(--oscuro);color:var(--dorado);border-color:var(--oscuro);}
-.empty{text-align:center;padding:40px 20px;color:var(--texto-cla);}
-.empty .ico{font-size:48px;margin-bottom:12px;display:block;}
-.empty p{font-size:14px;line-height:1.6;}
-/* GOOGLE DRIVE PANEL */
-.gdrive-panel{background:linear-gradient(135deg,#e8f5e9,#f1f8e9);border:1px solid #a5d6a7;border-radius:var(--radio-g);padding:20px;margin-bottom:16px;}
-.gdrive-conectado{background:linear-gradient(135deg,#e8f5e9,#f3f8ff);border:1px solid #81c784;}
-.gdrive-titulo{font-family:'Oswald',sans-serif;font-size:16px;color:#2e7d32;display:flex;align-items:center;gap:8px;margin-bottom:10px;}
-.gdrive-info{font-size:13px;color:#388e3c;line-height:1.6;}
-.gdrive-email{font-size:13px;font-weight:600;color:#1b5e20;margin-top:6px;}
-.paso-num{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:var(--azul);color:#fff;font-size:12px;font-weight:700;flex-shrink:0;}
-.pasos-lista{display:flex;flex-direction:column;gap:10px;}
-.paso-row{display:flex;gap:10px;align-items:flex-start;font-size:13px;color:var(--texto);line-height:1.5;}
-.code-inline{background:#f0f0f0;padding:2px 7px;border-radius:5px;font-family:monospace;font-size:12px;color:var(--rojo);}
-@media(min-width:480px){.contenido{padding:20px;}.hero h1{font-size:64px;}}
-.pantalla.activa .card{animation:fadeUp .3s ease both;}
-@keyframes fadeUp{from{opacity:0;transform:translateY(12px);}to{opacity:1;transform:translateY(0);}}
-.card:nth-child(2){animation-delay:.05s;}
-.card:nth-child(3){animation-delay:.1s;}
+/* ============================================================
+   VARIABLES & RESET
+   ============================================================ */
+:root {
+  --azul-oscuro:   #1a2744;
+  --azul-medio:    #2c4a7c;
+  --azul-claro:    #4a7fa5;
+  --dorado:        #c8a84b;
+  --dorado-claro:  #e8d08a;
+  --crema:         #f7f4ef;
+  --crema-oscura:  #ede8df;
+  --blanco:        #ffffff;
+  --texto-oscuro:  #1a2335;
+  --texto-medio:   #4a5568;
+  --texto-claro:   #718096;
+  --verde:         #2d7a4f;
+  --verde-claro:   #d4edda;
+  --rojo:          #b03030;
+  --rojo-claro:    #fde8e8;
+  --naranja:       #c47a1a;
+  --naranja-claro: #fef3cd;
+  --sombra:        0 2px 12px rgba(26,39,68,0.10);
+  --sombra-fuerte: 0 4px 24px rgba(26,39,68,0.18);
+  --radio:         10px;
+  --radio-grande:  16px;
+  --fuente-titulo: 'Playfair Display', Georgia, serif;
+  --fuente-cuerpo: 'Source Sans 3', 'Segoe UI', sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  font-family: var(--fuente-cuerpo);
+  background: var(--crema);
+  color: var(--texto-oscuro);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ============================================================
+   PANTALLAS (PÁGINAS)
+   ============================================================ */
+.pantalla { display: none; min-height: 100vh; flex-direction: column; }
+.pantalla.activa { display: flex; }
+
+/* ============================================================
+   CABECERA INSTITUCIONAL
+   ============================================================ */
+.cabecera {
+  background: linear-gradient(135deg, var(--azul-oscuro) 0%, var(--azul-medio) 100%);
+  color: var(--blanco);
+  padding: 0;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: var(--sombra-fuerte);
+}
+.cabecera-inner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+}
+.cabecera-back {
+  background: rgba(255,255,255,0.15);
+  border: none;
+  color: var(--blanco);
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  font-size: 18px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .2s;
+  flex-shrink: 0;
+}
+.cabecera-back:hover { background: rgba(255,255,255,0.25); }
+.cabecera-titulo {
+  font-family: var(--fuente-titulo);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: .3px;
+  flex: 1;
+}
+.cabecera-subtitulo {
+  font-size: 11px;
+  opacity: .75;
+  letter-spacing: .5px;
+  text-transform: uppercase;
+}
+.cabecera-emblema {
+  font-size: 28px;
+  flex-shrink: 0;
+}
+
+/* ============================================================
+   PANTALLA INICIO
+   ============================================================ */
+.inicio-hero {
+  background: linear-gradient(160deg, var(--azul-oscuro) 0%, var(--azul-medio) 60%, var(--azul-claro) 100%);
+  color: var(--blanco);
+  padding: 40px 24px 48px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+.inicio-hero::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+}
+.inicio-emblema { font-size: 64px; margin-bottom: 12px; position: relative; }
+.inicio-titulo {
+  font-family: var(--fuente-titulo);
+  font-size: 26px;
+  font-weight: 700;
+  margin-bottom: 6px;
+  position: relative;
+}
+.inicio-subtitulo {
+  font-size: 13px;
+  opacity: .8;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  position: relative;
+  margin-bottom: 4px;
+}
+.linea-dorada {
+  width: 60px; height: 3px;
+  background: linear-gradient(90deg, var(--dorado), var(--dorado-claro));
+  border-radius: 2px;
+  margin: 16px auto 0;
+}
+
+.inicio-body { padding: 24px 16px; flex: 1; }
+
+.card {
+  background: var(--blanco);
+  border-radius: var(--radio-grande);
+  box-shadow: var(--sombra);
+  padding: 20px;
+  margin-bottom: 16px;
+  border: 1px solid var(--crema-oscura);
+}
+.card-titulo {
+  font-family: var(--fuente-titulo);
+  font-size: 15px;
+  color: var(--azul-oscuro);
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.card-titulo-icono { font-size: 18px; }
+
+.banco-info {
+  font-size: 14px;
+  color: var(--texto-medio);
+  line-height: 1.5;
+}
+.banco-info.activo { color: var(--verde); font-weight: 600; }
+
+/* Upload zona */
+.upload-zona {
+  border: 2px dashed var(--azul-claro);
+  border-radius: var(--radio);
+  padding: 24px 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: all .2s;
+  background: rgba(74,127,165,0.04);
+  margin-top: 10px;
+}
+.upload-zona:hover, .upload-zona.drag { background: rgba(74,127,165,0.10); border-color: var(--azul-medio); }
+.upload-zona-icono { font-size: 32px; margin-bottom: 8px; }
+.upload-zona-texto { font-size: 14px; color: var(--texto-medio); }
+.upload-zona-sub { font-size: 12px; color: var(--texto-claro); margin-top: 4px; }
+#inputExcel { display: none; }
+
+/* Botones */
+.btn {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%;
+  padding: 14px 20px;
+  border-radius: var(--radio);
+  border: none;
+  font-family: var(--fuente-cuerpo);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .2s;
+  letter-spacing: .3px;
+  text-decoration: none;
+}
+.btn:active { transform: scale(.97); }
+.btn-primario {
+  background: linear-gradient(135deg, var(--azul-medio), var(--azul-claro));
+  color: var(--blanco);
+  box-shadow: 0 3px 10px rgba(44,74,124,0.25);
+}
+.btn-primario:hover { box-shadow: 0 5px 16px rgba(44,74,124,0.35); }
+.btn-primario:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+.btn-secundario {
+  background: var(--blanco);
+  color: var(--azul-medio);
+  border: 2px solid var(--azul-medio);
+}
+.btn-peligro {
+  background: transparent;
+  color: var(--rojo);
+  border: 1.5px solid var(--rojo);
+  font-size: 13px;
+  padding: 10px;
+}
+.btn-dorado {
+  background: linear-gradient(135deg, var(--dorado), var(--dorado-claro));
+  color: var(--azul-oscuro);
+  font-weight: 700;
+}
+
+/* Toast / notificaciones */
+#toast {
+  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+  background: var(--azul-oscuro); color: var(--blanco);
+  padding: 12px 20px; border-radius: 24px;
+  font-size: 13px; font-weight: 500;
+  box-shadow: var(--sombra-fuerte);
+  z-index: 9999;
+  opacity: 0; transition: opacity .3s;
+  white-space: nowrap;
+  max-width: 90vw;
+  text-align: center;
+}
+#toast.show { opacity: 1; }
+
+/* Modal confirmación */
+.modal-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(26,39,68,0.55);
+  z-index: 500;
+  align-items: center; justify-content: center;
+  padding: 24px;
+}
+.modal-overlay.activo { display: flex; }
+.modal-box {
+  background: var(--blanco);
+  border-radius: var(--radio-grande);
+  padding: 28px 24px;
+  width: 100%; max-width: 360px;
+  box-shadow: var(--sombra-fuerte);
+}
+.modal-titulo {
+  font-family: var(--fuente-titulo);
+  font-size: 18px;
+  color: var(--azul-oscuro);
+  margin-bottom: 10px;
+}
+.modal-texto { font-size: 14px; color: var(--texto-medio); line-height: 1.6; margin-bottom: 20px; }
+.modal-botones { display: flex; gap: 10px; }
+.modal-botones .btn { flex: 1; padding: 12px; }
+
+/* ============================================================
+   PANTALLA MATERIAS
+   ============================================================ */
+.materias-body { padding: 16px; flex: 1; }
+
+.materia-card {
+  background: var(--blanco);
+  border-radius: var(--radio-grande);
+  box-shadow: var(--sombra);
+  padding: 16px;
+  margin-bottom: 12px;
+  border: 1px solid var(--crema-oscura);
+  border-left: 5px solid var(--azul-claro);
+  transition: box-shadow .2s;
+}
+.materia-card:hover { box-shadow: var(--sombra-fuerte); }
+.materia-nombre {
+  font-family: var(--fuente-titulo);
+  font-size: 15px;
+  color: var(--azul-oscuro);
+  margin-bottom: 6px;
+  line-height: 1.3;
+}
+.materia-estado {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  display: flex; align-items: center; gap: 5px;
+}
+.estado-pendiente { color: var(--texto-claro); }
+.estado-progreso  { color: var(--naranja); }
+.estado-completa  { color: var(--verde); }
+
+.barra-progreso {
+  height: 5px;
+  background: var(--crema-oscura);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+.barra-progreso-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--azul-medio), var(--azul-claro));
+  border-radius: 3px;
+  transition: width .4s ease;
+}
+.barra-progreso-fill.completa {
+  background: linear-gradient(90deg, var(--verde), #4caf7d);
+}
+
+.calificacion-chip {
+  display: inline-block;
+  background: var(--crema-oscura);
+  color: var(--azul-oscuro);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 12px;
+  margin-bottom: 8px;
+}
+
+.materia-acciones { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
+.materia-acciones .btn { padding: 12px 14px; font-size: 13px; flex: 1; }
+.btn-reset-materia {
+  flex: 0 0 42px;
+  width: 42px; height: 42px; min-width: 42px;
+  padding: 0;
+  font-size: 18px;
+  border-radius: var(--radio);
+  border: 1.5px solid var(--rojo);
+  background: transparent;
+  color: var(--rojo);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all .2s;
+  line-height: 1;
+}
+.btn-reset-materia:hover { background: var(--rojo-claro); }
+
+/* ============================================================
+   PANTALLA PREGUNTA
+   ============================================================ */
+.pregunta-header {
+  background: var(--blanco);
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--crema-oscura);
+}
+.pregunta-meta {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 12px; color: var(--texto-claro);
+  margin-bottom: 8px;
+}
+.pregunta-contadores {
+  display: flex; gap: 12px;
+}
+.contador-item {
+  display: flex; align-items: center; gap: 4px;
+  font-size: 13px; font-weight: 600;
+}
+.contador-ok  { color: var(--verde); }
+.contador-mal { color: var(--rojo); }
+
+/* Timer */
+.timer-wrap { display: none; }
+.timer-numero {
+  font-family: var(--fuente-titulo);
+  font-size: 20px;
+  font-weight: 700;
+  min-width: 40px;
+  text-align: right;
+  color: var(--verde);
+  transition: color .3s;
+}
+.timer-numero.amarillo { color: var(--naranja); }
+.timer-numero.rojo     { color: var(--rojo); }
+.timer-barra-wrap { display: none; }
+.timer-barra {
+  height: 100%;
+  border-radius: 4px;
+  background: var(--verde);
+  transition: width 1s linear, background .3s;
+}
+.timer-barra.amarillo { background: var(--naranja); }
+.timer-barra.rojo     { background: var(--rojo); }
+
+/* Barra progreso preguntas */
+.progreso-preguntas {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 8px;
+}
+.progreso-preguntas-barra {
+  flex: 1; height: 4px;
+  background: var(--crema-oscura);
+  border-radius: 2px; overflow: hidden;
+}
+.progreso-preguntas-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--dorado), var(--dorado-claro));
+  border-radius: 2px;
+  transition: width .4s;
+}
+.progreso-texto { font-size: 11px; color: var(--texto-claro); white-space: nowrap; }
+
+/* Cuerpo pregunta */
+.pregunta-body { padding: 16px; flex: 1; overflow-y: auto; }
+
+.chip-bloom {
+  display: inline-block;
+  background: rgba(44,74,124,0.10);
+  color: var(--azul-medio);
+  font-size: 11px; font-weight: 600;
+  padding: 3px 10px; border-radius: 12px;
+  margin-bottom: 10px;
+  letter-spacing: .3px;
+  text-transform: uppercase;
+}
+
+.pregunta-texto {
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--texto-oscuro);
+  margin-bottom: 20px;
+  font-weight: 400;
+}
+
+/* Opciones */
+.opciones { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
+
+.opcion-btn {
+  display: flex; align-items: flex-start; gap: 12px;
+  background: var(--blanco);
+  border: 2px solid var(--crema-oscura);
+  border-radius: var(--radio);
+  padding: 14px;
+  cursor: pointer;
+  transition: all .2s;
+  text-align: left;
+  font-family: var(--fuente-cuerpo);
+  width: 100%;
+}
+.opcion-btn:hover:not(:disabled) {
+  border-color: var(--azul-claro);
+  background: rgba(74,127,165,0.05);
+}
+.opcion-btn:disabled { cursor: default; }
+.opcion-btn.seleccionada {
+  border-color: var(--azul-claro);
+  background: rgba(74,127,165,0.08);
+}
+.opcion-btn.correcta {
+  border-color: var(--verde);
+  background: var(--verde-claro);
+}
+.opcion-btn.incorrecta {
+  border-color: var(--rojo);
+  background: var(--rojo-claro);
+}
+
+.opcion-letra {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: var(--crema-oscura);
+  color: var(--azul-medio);
+  font-size: 13px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  transition: all .2s;
+}
+.opcion-btn.seleccionada .opcion-letra { background: var(--azul-claro); color: var(--blanco); }
+.opcion-btn.correcta .opcion-letra    { background: var(--verde); color: var(--blanco); }
+.opcion-btn.incorrecta .opcion-letra  { background: var(--rojo); color: var(--blanco); }
+
+.opcion-texto {
+  font-size: 14px;
+  color: var(--texto-oscuro);
+  line-height: 1.5;
+  padding-top: 4px;
+}
+
+/* Card retroalimentación */
+.retro-card {
+  border-radius: var(--radio);
+  padding: 16px;
+  margin-bottom: 16px;
+  display: none;
+  animation: slideUp .3s ease;
+}
+.retro-card.show { display: block; }
+.retro-card.correcta  { background: var(--verde-claro); border-left: 4px solid var(--verde); }
+.retro-card.incorrecta{ background: var(--rojo-claro);  border-left: 4px solid var(--rojo); }
+.retro-card.tiempo    { background: var(--naranja-claro); border-left: 4px solid var(--naranja); }
+
+.retro-resultado {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 16px; font-weight: 700;
+  margin-bottom: 6px;
+}
+.retro-correcta-label {
+  font-size: 13px; font-weight: 600;
+  color: var(--azul-oscuro);
+  margin-bottom: 8px;
+}
+.retro-separador {
+  height: 1px; background: rgba(0,0,0,0.08);
+  margin: 10px 0;
+}
+.retro-label {
+  font-size: 11px; font-weight: 700; letter-spacing: .8px;
+  text-transform: uppercase; color: var(--texto-claro);
+  margin-bottom: 4px;
+}
+.retro-texto {
+  font-size: 13px; line-height: 1.6; color: var(--texto-oscuro);
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.btn-siguiente-wrap { padding-bottom: 24px; }
+
+/* ============================================================
+   PANTALLA RESULTADO
+   ============================================================ */
+.resultado-header {
+  background: linear-gradient(135deg, var(--azul-oscuro), var(--azul-medio));
+  color: var(--blanco);
+  padding: 24px 20px;
+  text-align: center;
+}
+.resultado-materia-nombre {
+  font-family: var(--fuente-titulo);
+  font-size: 18px;
+  margin-bottom: 16px;
+  opacity: .9;
+}
+.resultado-calificacion {
+  font-family: var(--fuente-titulo);
+  font-size: 52px;
+  font-weight: 700;
+  color: var(--dorado-claro);
+  line-height: 1;
+}
+.resultado-cal-label {
+  font-size: 13px; opacity: .75;
+  margin-top: 4px; margin-bottom: 16px;
+}
+.resultado-barra-wrap {
+  height: 10px; background: rgba(255,255,255,0.2);
+  border-radius: 5px; overflow: hidden;
+  margin-bottom: 6px;
+}
+.resultado-barra-fill {
+  height: 100%; border-radius: 5px;
+  background: linear-gradient(90deg, var(--dorado), var(--dorado-claro));
+  transition: width .8s ease;
+}
+.resultado-pct { font-size: 14px; font-weight: 600; color: var(--dorado-claro); }
+
+.resultado-body { padding: 16px; flex: 1; overflow-y: auto; }
+
+.resultado-item {
+  background: var(--blanco);
+  border-radius: var(--radio);
+  margin-bottom: 10px;
+  border: 1px solid var(--crema-oscura);
+  overflow: hidden;
+  box-shadow: var(--sombra);
+}
+.resultado-item-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 14px;
+  cursor: pointer;
+}
+.resultado-item-icono { font-size: 20px; flex-shrink: 0; }
+.resultado-item-info { flex: 1; min-width: 0; }
+.resultado-item-num  { font-size: 11px; color: var(--texto-claro); }
+.resultado-item-estado {
+  font-size: 13px; font-weight: 700;
+}
+.estado-ok  { color: var(--verde); }
+.estado-mal { color: var(--rojo); }
+.estado-tiempo { color: var(--naranja); }
+.resultado-item-toggle { color: var(--texto-claro); font-size: 14px; flex-shrink: 0; }
+
+.resultado-item-body {
+  display: none;
+  padding: 0 14px 14px;
+  border-top: 1px solid var(--crema-oscura);
+}
+.resultado-item-body.abierto { display: block; }
+.resultado-item-pregunta {
+  font-size: 13px; color: var(--texto-medio);
+  line-height: 1.5; margin-top: 10px; margin-bottom: 8px;
+}
+.resultado-item-respuesta {
+  font-size: 13px; font-weight: 600; color: var(--azul-medio);
+  margin-bottom: 8px;
+}
+.resultado-item-retro {
+  font-size: 12px; color: var(--texto-medio);
+  line-height: 1.5;
+  background: var(--crema);
+  padding: 10px; border-radius: 6px;
+  border-left: 3px solid var(--dorado);
+}
+
+.resultado-footer { padding: 16px; padding-bottom: 24px; }
+
+/* ============================================================
+   SPINNER
+   ============================================================ */
+#spinner {
+  display: none; position: fixed; inset: 0;
+  background: rgba(247,244,239,0.85);
+  z-index: 999;
+  align-items: center; justify-content: center;
+  flex-direction: column; gap: 16px;
+}
+#spinner.show { display: flex; }
+.spinner-circulo {
+  width: 44px; height: 44px;
+  border: 4px solid var(--crema-oscura);
+  border-top-color: var(--azul-medio);
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinner-texto { font-size: 14px; color: var(--texto-medio); }
+
+/* ============================================================
+   RESPONSIVE — pantallas grandes
+   ============================================================ */
+
+/* ============================================================
+   MODO REPASO — estilos adicionales
+   ============================================================ */
+.btn-repaso {
+  background: linear-gradient(135deg, var(--naranja), #e8943a);
+  color: var(--blanco);
+  font-size: 13px;
+  padding: 12px 14px;
+  flex: 1;
+  box-shadow: 0 3px 8px rgba(196,122,26,0.25);
+}
+.btn-repaso:hover { box-shadow: 0 5px 14px rgba(196,122,26,0.38); }
+
+.repaso-chip {
+  display: inline-block;
+  background: var(--naranja-claro);
+  color: var(--naranja);
+  border: 1px solid var(--naranja);
+  font-size: 11px; font-weight: 700;
+  padding: 3px 10px; border-radius: 12px;
+  margin-bottom: 6px;
+  letter-spacing: .3px;
+}
+.repaso-chip-progreso {
+  display: inline-block;
+  background: rgba(196,122,26,0.12);
+  color: var(--naranja);
+  font-size: 11px; font-weight: 600;
+  padding: 2px 8px; border-radius: 10px;
+  margin-left: 6px;
+}
+
+/* Banner modo repaso en pantalla pregunta */
+.banner-repaso {
+  background: linear-gradient(135deg, var(--naranja), #e8943a);
+  color: var(--blanco);
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 5px 16px;
+  letter-spacing: .5px;
+  display: none;
+}
+.banner-repaso.visible { display: block; }
+
+/* Resultado repaso header diferenciado */
+.resultado-header.repaso-header {
+  background: linear-gradient(135deg, #7a3f00, var(--naranja));
+}
+.resultado-repaso-comparacion {
+  background: rgba(255,255,255,0.15);
+  border-radius: 10px;
+  padding: 10px 16px;
+  margin-top: 12px;
+  font-size: 13px;
+  text-align: left;
+}
+.resultado-repaso-comparacion div { margin-bottom: 4px; }
+
+@media (min-width: 480px) {
+  .inicio-hero { padding: 48px 40px 56px; }
+  .inicio-body, .materias-body, .pregunta-body, .resultado-body, .resultado-footer { padding: 20px; max-width: 560px; margin-left: auto; margin-right: auto; }
+  .cabecera-inner { max-width: 560px; margin: 0 auto; }
+  .pregunta-header { max-width: 560px; margin: 0 auto; }
+  .resultado-header { padding: 32px 40px; }
+}
 </style>
 </head>
 <body>
 
-<!-- PANTALLA INICIO -->
-<div class="pantalla activa" id="p-inicio">
-  <div class="hero">
-    <div class="hero-bandera">🇺🇸🇨🇦🇲🇽</div>
-    <div class="hero-badge">FIFA World Cup</div>
-    <h1>POLLA<br/><span>MUNDIAL</span><br/>2026</h1>
-    <div class="hero-sub" id="hero-sub-txt">Cargando...</div>
-    <div class="sync-bar">
-      <div class="sync-dot" id="sync-dot"></div>
-      <span id="sync-txt">Verificando sincronización...</span>
-    </div>
-  </div>
-  <div class="nav-tabs" id="navTabs">
-    <button class="nav-tab activo" onclick="cambiarTab('p-inicio',this)"><span class="ico">🏠</span>Inicio</button>
-    <button class="nav-tab" onclick="cambiarTab('p-partidos',this)"><span class="ico">⚽</span>Partidos</button>
-    <button class="nav-tab" onclick="cambiarTab('p-tabla',this)"><span class="ico">🏆</span>Tabla</button>
-    <button class="nav-tab" onclick="cambiarTab('p-pronosticos',this)"><span class="ico">🎯</span>Pronóst.</button>
-    <button class="nav-tab" onclick="cambiarTab('p-admin',this)"><span class="ico">⚙️</span>Admin</button>
-  </div>
-  <div class="contenido">
-    <div id="bloque-perfil-existente" style="display:none;">
-      <div class="perfil-wrap card">
-        <div class="avatar-grande" onclick="editarFoto()" title="Cambiar foto">
-          <span id="avatar-emoji">⚽</span>
-          <img id="avatar-img" src="" alt="" style="display:none;"/>
-          <div class="avatar-overlay">📷 Cambiar</div>
-        </div>
-        <div class="perfil-nombre" id="perfil-nombre-disp">Tu nombre</div>
-        <div class="perfil-pts" id="perfil-rol">Participante</div>
-        <div class="perfil-stats">
-          <div class="stat-box"><div class="stat-num" id="st-pts">0</div><div class="stat-lbl">Puntos</div></div>
-          <div class="stat-box"><div class="stat-num" id="st-exactos">0</div><div class="stat-lbl">Exactos</div></div>
-          <div class="stat-box"><div class="stat-num" id="st-posicion">—</div><div class="stat-lbl">Posición</div></div>
-        </div>
-      </div>
-      <input type="file" id="inputFoto" accept="image/*" onchange="procesarFoto(event)"/>
-      <div class="card">
-        <div class="card-titulo"><span class="ico">⏰</span>Tiempo restante</div>
-        <div class="cuenta-regresiva">
-          <div class="cr-box"><div class="cr-num" id="cr-d">--</div><div class="cr-lbl">Días</div></div>
-          <div class="cr-box"><div class="cr-num" id="cr-h">--</div><div class="cr-lbl">Horas</div></div>
-          <div class="cr-box"><div class="cr-num" id="cr-m">--</div><div class="cr-lbl">Min</div></div>
-          <div class="cr-box"><div class="cr-num" id="cr-s">--</div><div class="cr-lbl">Seg</div></div>
-        </div>
-        <div id="estado-polla-banner"></div>
-      </div>
-      <div class="card">
-        <div class="card-titulo"><span class="ico">📊</span>Sistema de puntos</div>
-        <table class="puntos-tabla">
-          <tr><td>Resultado exacto (marcador)</td><td>3 pts</td></tr>
-          <tr><td>Ganador correcto</td><td>1 pt</td></tr>
-          <tr><td>Empate correcto</td><td>1 pt</td></tr>
-        </table>
-      </div>
-    </div>
-    <div id="bloque-crear-perfil">
-      <div class="card">
-        <div class="card-titulo"><span class="ico">🎉</span>¡Únete a la polla!</div>
-        <div class="info-banner">Crea tu perfil para participar. Solo necesitas tu nombre — ¡listo en 30 segundos!</div>
-        <div class="campo" id="campo-nombre">
-          <label>¿Cómo te llamamos? *</label>
-          <input type="text" id="inp-nombre" placeholder="Ej: Carlos, María, El Profe..." maxlength="30" oninput="limpiarError('campo-nombre')"/>
-          <div class="error-msg">Escribe al menos 2 caracteres.</div>
-        </div>
-        <div class="campo">
-          <label>Foto de perfil (opcional)</label>
-          <div class="foto-btn" onclick="document.getElementById('inputFotoCrear').click()">
-            <span class="ico-cam">📷</span>
-            <span id="foto-estado-txt">Toca para agregar foto</span>
-          </div>
-          <input type="file" id="inputFotoCrear" accept="image/*" style="display:none" onchange="procesarFotoCrear(event)"/>
-        </div>
-        <button class="btn btn-dorado" onclick="crearPerfil()">🚀 Crear mi perfil y participar</button>
-      </div>
-    </div>
-  </div>
+<!-- ============================================================
+     SPINNER
+     ============================================================ -->
+<div id="spinner">
+  <div class="spinner-circulo"></div>
+  <div class="spinner-texto">Procesando Excel…</div>
 </div>
 
-<!-- PANTALLA PARTIDOS -->
-<div class="pantalla" id="p-partidos">
-  <div class="nav-tabs">
-    <button class="nav-tab" onclick="cambiarTab('p-inicio',this)"><span class="ico">🏠</span>Inicio</button>
-    <button class="nav-tab activo" onclick="cambiarTab('p-partidos',this)"><span class="ico">⚽</span>Partidos</button>
-    <button class="nav-tab" onclick="cambiarTab('p-tabla',this)"><span class="ico">🏆</span>Tabla</button>
-    <button class="nav-tab" onclick="cambiarTab('p-pronosticos',this)"><span class="ico">🎯</span>Pronóst.</button>
-    <button class="nav-tab" onclick="cambiarTab('p-admin',this)"><span class="ico">⚙️</span>Admin</button>
-  </div>
-  <div class="contenido">
-    <div class="sec-titulo">⚽ Partidos</div>
-    <div class="sec-sub" id="sub-partidos">Ingresa tus pronósticos antes del cierre</div>
-    <div class="filtros">
-      <button class="filtro-btn activo" onclick="filtrarPartidos('todos',this)">Todos</button>
-      <button class="filtro-btn" onclick="filtrarPartidos('pendiente',this)">Pendientes</button>
-      <button class="filtro-btn" onclick="filtrarPartidos('jugado',this)">Jugados</button>
-    </div>
-    <div id="lista-partidos"></div>
-  </div>
-</div>
+<!-- ============================================================
+     TOAST
+     ============================================================ -->
+<div id="toast"></div>
 
-<!-- PANTALLA TABLA -->
-<div class="pantalla" id="p-tabla">
-  <div class="nav-tabs">
-    <button class="nav-tab" onclick="cambiarTab('p-inicio',this)"><span class="ico">🏠</span>Inicio</button>
-    <button class="nav-tab" onclick="cambiarTab('p-partidos',this)"><span class="ico">⚽</span>Partidos</button>
-    <button class="nav-tab activo" onclick="cambiarTab('p-tabla',this)"><span class="ico">🏆</span>Tabla</button>
-    <button class="nav-tab" onclick="cambiarTab('p-pronosticos',this)"><span class="ico">🎯</span>Pronóst.</button>
-    <button class="nav-tab" onclick="cambiarTab('p-admin',this)"><span class="ico">⚙️</span>Admin</button>
-  </div>
-  <div class="contenido">
-    <div class="sec-titulo">🏆 Tabla general</div>
-    <div class="sec-sub" id="sub-tabla">Posiciones actualizadas</div>
-    <div id="lista-tabla"></div>
-  </div>
-</div>
-
-<!-- PANTALLA PRONÓSTICOS -->
-<div class="pantalla" id="p-pronosticos">
-  <div class="nav-tabs">
-    <button class="nav-tab" onclick="cambiarTab('p-inicio',this)"><span class="ico">🏠</span>Inicio</button>
-    <button class="nav-tab" onclick="cambiarTab('p-partidos',this)"><span class="ico">⚽</span>Partidos</button>
-    <button class="nav-tab" onclick="cambiarTab('p-tabla',this)"><span class="ico">🏆</span>Tabla</button>
-    <button class="nav-tab activo" onclick="cambiarTab('p-pronosticos',this)"><span class="ico">🎯</span>Pronóst.</button>
-    <button class="nav-tab" onclick="cambiarTab('p-admin',this)"><span class="ico">⚙️</span>Admin</button>
-  </div>
-  <div class="contenido">
-    <div class="sec-titulo">🎯 Mis pronósticos</div>
-    <div class="sec-sub">Historial de tus predicciones</div>
-    <div id="lista-pronosticos"></div>
-  </div>
-</div>
-
-<!-- PANTALLA ADMIN -->
-<div class="pantalla" id="p-admin">
-  <div class="nav-tabs">
-    <button class="nav-tab" onclick="cambiarTab('p-inicio',this)"><span class="ico">🏠</span>Inicio</button>
-    <button class="nav-tab" onclick="cambiarTab('p-partidos',this)"><span class="ico">⚽</span>Partidos</button>
-    <button class="nav-tab" onclick="cambiarTab('p-tabla',this)"><span class="ico">🏆</span>Tabla</button>
-    <button class="nav-tab" onclick="cambiarTab('p-pronosticos',this)"><span class="ico">🎯</span>Pronóst.</button>
-    <button class="nav-tab activo" onclick="cambiarTab('p-admin',this)"><span class="ico">⚙️</span>Admin</button>
-  </div>
-  <div class="contenido">
-    <div class="sec-titulo">⚙️ Administración</div>
-    <div class="sec-sub">Solo tú ves esta sección completa</div>
-
-    <!-- GOOGLE DRIVE -->
-    <div id="bloque-gdrive"></div>
-
-    <!-- PERMISOS -->
-    <div class="card" id="bloque-permisos" style="display:none;">
-      <div class="card-titulo"><span class="ico">🔓</span>Reabrir pronósticos</div>
-      <div class="info-banner">Usa esto cuando un participante necesite corregir su pronóstico después del cierre. El admin decide cuándo volver a cerrar.</div>
-      <div id="lista-permisos-admin"></div>
-      <div style="display:flex;gap:8px;margin-top:14px;">
-        <button class="btn btn-oscuro" style="flex:1" onclick="reabrirTodos()">🔓 Reabrir todos</button>
-        <button class="btn btn-rojo" style="flex:1" onclick="cerrarTodos()">🔒 Cerrar todos</button>
-      </div>
-    </div>
-
-    <!-- CONFIG ID ARCHIVO (usuarios sin ser admin) -->
-    <div class="card" id="bloque-file-id-usuario">
-      <div class="card-titulo"><span class="ico">🔗</span>Conectar con el grupo</div>
-      <div class="info-banner">Si el administrador te dio un ID de archivo, pégalo aquí para ver los datos del grupo en tiempo real.</div>
-      <button class="btn btn-oscuro" onclick="abrirModalFileId()">📥 Configurar ID de archivo compartido</button>
-    </div>
-
-    <!-- CONFIG -->
-    <div class="card" id="bloque-config" style="display:none;">
-      <div class="card-titulo"><span class="ico">📅</span>Configuración</div>
-      <div class="campo" id="campo-fecha-cierre">
-        <label>Fecha y hora de cierre de pronósticos</label>
-        <input type="datetime-local" id="inp-fecha-cierre"/>
-        <div class="error-msg">Selecciona una fecha válida.</div>
-      </div>
-      <div class="campo">
-        <label>Nombre de la polla</label>
-        <input type="text" id="inp-nombre-polla" placeholder="Ej: Polla de la Oficina 2026" maxlength="50"/>
-      </div>
-      <button class="btn btn-dorado" onclick="guardarConfig()">💾 Guardar configuración</button>
-    </div>
-
-    <!-- PARTICIPANTES -->
-    <div class="card" id="bloque-participantes" style="display:none;">
-      <div class="card-titulo"><span class="ico">👥</span>Participantes</div>
-      <div id="lista-participantes-admin"></div>
-      <div style="margin-top:12px;">
-        <button class="btn btn-oscuro" onclick="abrirAgregarParticipante()">➕ Agregar participante</button>
-      </div>
-    </div>
-
-    <!-- RESULTADOS -->
-    <div id="bloque-resultados" style="display:none;"></div>
-
-    <!-- ACCIONES -->
-    <div class="card" id="bloque-acciones" style="display:none;">
-      <div class="card-titulo"><span class="ico">⚡</span>Acciones</div>
-      <div style="display:flex;flex-direction:column;gap:10px;">
-        <button class="btn btn-ghost" onclick="recalcularPuntos()">🔄 Recalcular puntos</button>
-        <button class="btn btn-ghost" onclick="sincronizarDesdeNube()">☁️ Forzar sincronización</button>
-        <button class="btn btn-ghost" onclick="resetearPartidos()">🗂️ Restablecer partidos oficiales 2026</button>
-        <button class="btn btn-rojo" onclick="confirmarResetear()">🗑️ Reiniciar polla (borrar todo)</button>
-      </div>
-    </div>
-
-  </div>
-</div>
-
-<!-- MODALES -->
+<!-- ============================================================
+     MODAL CONFIRMACIÓN
+     ============================================================ -->
 <div class="modal-overlay" id="modalOverlay">
   <div class="modal-box">
-    <div class="modal-titulo" id="modalTitulo"></div>
-    <div class="modal-texto" id="modalTexto"></div>
+    <div class="modal-titulo" id="modalTitulo">¿Confirmar acción?</div>
+    <div class="modal-texto" id="modalTexto">Esta acción no se puede deshacer.</div>
     <div class="modal-botones">
-      <button class="btn btn-ghost" style="flex:1" onclick="cerrarModal()">Cancelar</button>
-      <button class="btn btn-rojo" style="flex:1" id="modalConfirmar">Confirmar</button>
+      <button class="btn btn-secundario" onclick="cerrarModal()">Cancelar</button>
+      <button class="btn btn-peligro" id="modalConfirmar">Confirmar</button>
     </div>
   </div>
 </div>
 
-<div class="modal-overlay" id="modalParticipante">
-  <div class="modal-box">
-    <div class="modal-titulo">👤 Agregar participante</div>
-    <div class="campo" id="campo-np">
-      <label>Nombre *</label>
-      <input type="text" id="inp-np-nombre" placeholder="Nombre del participante" maxlength="30" oninput="limpiarError('campo-np')"/>
-      <div class="error-msg">El nombre debe tener al menos 2 caracteres.</div>
+<!-- ============================================================
+     PANTALLA 1: INICIO
+     ============================================================ -->
+<div class="pantalla activa" id="pInicio">
+  <div class="inicio-hero">
+    <div class="inicio-emblema">🎓</div>
+    <div class="inicio-titulo">Entrenador Complexivo</div>
+    <div class="inicio-subtitulo">Sistema PANDA · Preparación de Examen</div>
+    <div class="linea-dorada"></div>
+  </div>
+
+  <div class="inicio-body">
+
+    <!-- Card banco -->
+    <div class="card">
+      <div class="card-titulo">
+        <span class="card-titulo-icono">📚</span> Banco de Preguntas
+      </div>
+      <div class="banco-info" id="bancoInfo">
+        Sin banco de preguntas cargado. Seleccione un archivo Excel para comenzar.
+      </div>
     </div>
-    <div class="modal-botones">
-      <button class="btn btn-ghost" style="flex:1" onclick="cerrarModalParticipante()">Cancelar</button>
-      <button class="btn btn-dorado" style="flex:1" onclick="guardarParticipante()">✅ Agregar</button>
+
+    <!-- Card cargar -->
+    <div class="card">
+      <div class="card-titulo">
+        <span class="card-titulo-icono">📂</span> Cargar Archivo
+      </div>
+      <div class="upload-zona" id="uploadZona" onclick="abrirSelectorArchivo()">
+        <div class="upload-zona-icono">📊</div>
+        <div class="upload-zona-texto">Toque para seleccionar el archivo Excel</div>
+        <div class="upload-zona-sub">Formato .xlsx · Primera hoja del libro</div>
+      </div>
+      <input type="file" id="inputExcel" accept=".xlsx,.xls" onchange="cargarExcel(this)"/>
+    </div>
+
+    <!-- Botón materias -->
+    <button class="btn btn-dorado" id="btnVerMaterias" disabled onclick="irA('pMaterias')">
+      📋 Ver Materias y Practicar
+    </button>
+
+    <!-- Reset general -->
+    <div style="margin-top:12px;">
+      <button class="btn btn-peligro" onclick="confirmar(
+        'Resetear Todo el Progreso',
+        'Se borrará el progreso de todas las materias. El banco de preguntas se mantendrá.',
+        resetearTodo
+      )">🔄 Resetear todo el progreso</button>
+    </div>
+
+    <div style="text-align:center; margin-top:20px; font-size:11px; color:var(--texto-claro); letter-spacing:.5px;">
+      v1.1 · Sin límite de tiempo · Almacenamiento local
     </div>
   </div>
 </div>
 
-<!-- Modal para ingresar Client ID -->
-<div class="modal-overlay" id="modalClientId">
-  <div class="modal-box" style="max-width:500px;">
-    <div class="modal-titulo">🔑 Configurar Google Drive</div>
-    <p style="font-size:13px;color:var(--texto-cla);margin-bottom:16px;line-height:1.6;">
-      Para sincronizar con Google Drive necesitas un <strong>Client ID</strong> de Google Cloud Console. Solo tienes que hacerlo una vez.
-    </p>
-    <div class="pasos-lista" style="margin-bottom:16px;">
-      <div class="paso-row"><span class="paso-num">1</span><span>Ve a <strong>console.cloud.google.com</strong> → crea un proyecto nuevo</span></div>
-      <div class="paso-row"><span class="paso-num">2</span><span>Menú → <strong>APIs y servicios → Biblioteca</strong> → activa <strong>Google Drive API</strong></span></div>
-      <div class="paso-row"><span class="paso-num">3</span><span>Ve a <strong>Credenciales → Crear credencial → ID de cliente OAuth 2.0</strong></span></div>
-      <div class="paso-row"><span class="paso-num">4</span><span>Tipo: <span class="code-inline">Aplicación web</span> — En "Orígenes autorizados" agrega la URL donde abres el archivo (o <span class="code-inline">http://localhost</span> si es local)</span></div>
-      <div class="paso-row"><span class="paso-num">5</span><span>Copia el <strong>ID de cliente</strong> (termina en <span class="code-inline">.apps.googleusercontent.com</span>) y pégalo aquí:</span></div>
+<!-- ============================================================
+     PANTALLA 2: MATERIAS
+     ============================================================ -->
+<div class="pantalla" id="pMaterias">
+  <div class="cabecera">
+    <div class="cabecera-inner">
+      <button class="cabecera-back" onclick="irA('pInicio')">←</button>
+      <div>
+        <div class="cabecera-titulo">Materias</div>
+        <div class="cabecera-subtitulo">Seleccione una materia para practicar</div>
+      </div>
+      <div class="cabecera-emblema">📋</div>
     </div>
-    <div class="campo" id="campo-client-id">
-      <label>Client ID de Google *</label>
-      <input type="text" id="inp-client-id" placeholder="xxxxxxxx.apps.googleusercontent.com" oninput="limpiarError('campo-client-id')"/>
-      <div class="error-msg">El Client ID debe terminar en .apps.googleusercontent.com</div>
+  </div>
+  <div class="materias-body" id="listaMaterias">
+    <!-- Generado por JS -->
+  </div>
+</div>
+
+<!-- ============================================================
+     PANTALLA 3: PREGUNTA
+     ============================================================ -->
+<div class="pantalla" id="pPregunta">
+  <div class="cabecera">
+    <div class="cabecera-inner">
+      <button class="cabecera-back" onclick="salirDePregunta()">←</button>
+      <div style="flex:1; min-width:0;">
+        <div class="cabecera-titulo" id="pqMateriaLabel" style="font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Materia</div>
+        <div class="cabecera-subtitulo" id="pqNivelBloom">Nivel Bloom</div>
+      </div>
     </div>
-    <div class="modal-botones">
-      <button class="btn btn-ghost" style="flex:1" onclick="cerrarModalClientId()">Cancelar</button>
-      <button class="btn btn-dorado" style="flex:1" onclick="guardarClientId()">✅ Guardar y conectar</button>
+  </div>
+
+  <!-- Banner modo repaso -->
+  <div class="banner-repaso" id="bannerRepaso">🔁 MODO REPASO — Solo preguntas incorrectas</div>
+
+  <!-- Header con timer y progreso -->
+  <div class="pregunta-header">
+    <div class="pregunta-meta">
+      <div class="pregunta-contadores">
+        <span class="contador-item contador-ok">✅ <span id="pqCorrectas">0</span></span>
+        <span class="contador-item contador-mal">❌ <span id="pqIncorrectas">0</span></span>
+      </div>
+    </div>
+    <div class="progreso-preguntas" style="margin-top:8px;">
+      <div class="progreso-preguntas-barra">
+        <div class="progreso-preguntas-fill" id="pqBarraProgreso"></div>
+      </div>
+      <div class="progreso-texto" id="pqProgreso">1 / 10</div>
+    </div>
+  </div>
+
+  <!-- Cuerpo -->
+  <div class="pregunta-body" id="preguntaScroll">
+    <div class="chip-bloom" id="pqBloom">Nivel: Conocimiento</div>
+    <div class="pregunta-texto" id="pqTexto">Texto de la pregunta...</div>
+
+    <div class="opciones" id="pqOpciones">
+      <!-- Generado dinámicamente -->
+    </div>
+
+    <!-- Retroalimentación -->
+    <div class="retro-card" id="retroCard">
+      <div class="retro-resultado" id="retroResultado"></div>
+      <div class="retro-correcta-label" id="retroCorrecta"></div>
+      <div class="retro-separador"></div>
+      <div class="retro-label">📖 Retroalimentación</div>
+      <div class="retro-texto" id="retroTexto"></div>
+    </div>
+
+    <div class="btn-siguiente-wrap">
+      <button class="btn btn-primario" id="btnSiguiente" style="display:none" onclick="siguientePregunta()">
+        Siguiente pregunta →
+      </button>
     </div>
   </div>
 </div>
 
-<!-- Modal File ID usuario -->
-<div class="modal-overlay" id="modalFileId">
-  <div class="modal-box">
-    <div class="modal-titulo">🔗 ID del archivo compartido</div>
-    <p style="font-size:13px;color:var(--texto-cla);margin-bottom:16px;line-height:1.6;">Pega el ID que te compartió el administrador para ver los datos del grupo (participantes, tabla, resultados) en tiempo real.</p>
-    <div class="campo">
-      <label>ID del archivo *</label>
-      <input type="text" id="inp-file-id-usuario" placeholder="Pega el ID aquí..."/>
+<!-- ============================================================
+     PANTALLA 4: RESULTADO
+     ============================================================ -->
+<div class="pantalla" id="pResultado">
+  <div class="resultado-header">
+    <div class="resultado-materia-nombre" id="resMateria">Materia</div>
+    <div class="resultado-calificacion" id="resCalificacion">0 / 0</div>
+    <div class="resultado-cal-label">respuestas correctas</div>
+    <div class="resultado-barra-wrap">
+      <div class="resultado-barra-fill" id="resBarraFill" style="width:0%"></div>
     </div>
-    <div class="modal-botones">
-      <button class="btn btn-ghost" style="flex:1" onclick="cerrarModalFileId()">Cancelar</button>
-      <button class="btn btn-dorado" style="flex:1" onclick="guardarFileIdUsuario()">✅ Conectar</button>
+    <div class="resultado-pct" id="resPct">0%</div>
+  </div>
+
+  <div class="resultado-body" id="listaResultados">
+    <!-- Generado por JS -->
+  </div>
+
+  <div class="resultado-footer">
+    <div id="btnRepasoWrap" style="margin-bottom:10px; display:none;">
+      <button class="btn btn-repaso" onclick="iniciarRepaso(materiaResultadoActual)">
+        🔁 Repasar errores (<span id="cntErroresRepaso">0</span> preguntas)
+      </button>
     </div>
+    <button class="btn btn-primario" onclick="irA('pMaterias')">← Volver a Materias</button>
   </div>
 </div>
 
-<div id="toast" class="toast"></div>
-<div id="spinner"><div class="spin"></div><div class="spin-txt" id="spinnerTxt">Sincronizando...</div></div>
-
-<!-- Google Identity Services -->
-<script src="https://accounts.google.com/gsi/client" async defer></script>
-
+<!-- ============================================================
+     JAVASCRIPT
+     ============================================================ -->
 <script>
-// ══════════════════════════════════════════════════
-// CONSTANTES Y ESTADO
-// ══════════════════════════════════════════════════
-const APP_KEY = 'polla_mundial_2026_v1';
-const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/drive.file';
-const NOMBRE_ARCHIVO = 'polla_mundial_2026_data.json';
+/* ============================================================
+   ESTADO GLOBAL
+   ============================================================ */
+const STORAGE_KEY    = 'entrenador_banco';
+const PROGRESO_KEY   = 'entrenador_progreso';
+const RESPUESTAS_KEY = 'entrenador_respuestas';
+const REPASO_PROG_KEY= 'entrenador_repaso_prog';
+const REPASO_RESP_KEY= 'entrenador_repaso_resp';
+const TIEMPO_POR_PREGUNTA = 60;
 
-const PARTIDOS_INICIAL = [
-  // GRUPO A: México, Sudáfrica, Corea del Sur, Chequia
-  {id:'A1',grupo:'A',local:{n:'México',e:'🇲🇽'},visita:{n:'Sudáfrica',e:'🇿🇦'},fecha:'2026-06-11',gols:{l:null,v:null}},
-  {id:'A2',grupo:'A',local:{n:'Corea del Sur',e:'🇰🇷'},visita:{n:'Chequia',e:'🇨🇿'},fecha:'2026-06-12',gols:{l:null,v:null}},
-  {id:'A3',grupo:'A',local:{n:'México',e:'🇲🇽'},visita:{n:'Chequia',e:'🇨🇿'},fecha:'2026-06-16',gols:{l:null,v:null}},
-  {id:'A4',grupo:'A',local:{n:'Sudáfrica',e:'🇿🇦'},visita:{n:'Corea del Sur',e:'🇰🇷'},fecha:'2026-06-16',gols:{l:null,v:null}},
-  {id:'A5',grupo:'A',local:{n:'Chequia',e:'🇨🇿'},visita:{n:'Sudáfrica',e:'🇿🇦'},fecha:'2026-06-20',gols:{l:null,v:null}},
-  {id:'A6',grupo:'A',local:{n:'Corea del Sur',e:'🇰🇷'},visita:{n:'México',e:'🇲🇽'},fecha:'2026-06-20',gols:{l:null,v:null}},
-  // GRUPO B: Canadá, Bosnia-Herzegovina, Qatar, Suiza
-  {id:'B1',grupo:'B',local:{n:'Canadá',e:'🇨🇦'},visita:{n:'Qatar',e:'🇶🇦'},fecha:'2026-06-12',gols:{l:null,v:null}},
-  {id:'B2',grupo:'B',local:{n:'Bosnia-Herz.',e:'🇧🇦'},visita:{n:'Suiza',e:'🇨🇭'},fecha:'2026-06-13',gols:{l:null,v:null}},
-  {id:'B3',grupo:'B',local:{n:'Canadá',e:'🇨🇦'},visita:{n:'Suiza',e:'🇨🇭'},fecha:'2026-06-17',gols:{l:null,v:null}},
-  {id:'B4',grupo:'B',local:{n:'Qatar',e:'🇶🇦'},visita:{n:'Bosnia-Herz.',e:'🇧🇦'},fecha:'2026-06-17',gols:{l:null,v:null}},
-  {id:'B5',grupo:'B',local:{n:'Suiza',e:'🇨🇭'},visita:{n:'Qatar',e:'🇶🇦'},fecha:'2026-06-21',gols:{l:null,v:null}},
-  {id:'B6',grupo:'B',local:{n:'Bosnia-Herz.',e:'🇧🇦'},visita:{n:'Canadá',e:'🇨🇦'},fecha:'2026-06-21',gols:{l:null,v:null}},
-  // GRUPO C: Brasil, Haití, Marruecos, Escocia
-  {id:'C1',grupo:'C',local:{n:'Brasil',e:'🇧🇷'},visita:{n:'Haití',e:'🇭🇹'},fecha:'2026-06-13',gols:{l:null,v:null}},
-  {id:'C2',grupo:'C',local:{n:'Marruecos',e:'🇲🇦'},visita:{n:'Escocia',e:'🏴󠁧󠁢󠁳󠁣󠁴󠁿'},fecha:'2026-06-13',gols:{l:null,v:null}},
-  {id:'C3',grupo:'C',local:{n:'Brasil',e:'🇧🇷'},visita:{n:'Escocia',e:'🏴󠁧󠁢󠁳󠁣󠁴󠁿'},fecha:'2026-06-17',gols:{l:null,v:null}},
-  {id:'C4',grupo:'C',local:{n:'Haití',e:'🇭🇹'},visita:{n:'Marruecos',e:'🇲🇦'},fecha:'2026-06-17',gols:{l:null,v:null}},
-  {id:'C5',grupo:'C',local:{n:'Escocia',e:'🏴󠁧󠁢󠁳󠁣󠁴󠁿'},visita:{n:'Haití',e:'🇭🇹'},fecha:'2026-06-21',gols:{l:null,v:null}},
-  {id:'C6',grupo:'C',local:{n:'Marruecos',e:'🇲🇦'},visita:{n:'Brasil',e:'🇧🇷'},fecha:'2026-06-21',gols:{l:null,v:null}},
-  // GRUPO D: EE.UU., Paraguay, Australia, Turquía
-  {id:'D1',grupo:'D',local:{n:'Estados Unidos',e:'🇺🇸'},visita:{n:'Paraguay',e:'🇵🇾'},fecha:'2026-06-12',gols:{l:null,v:null}},
-  {id:'D2',grupo:'D',local:{n:'Australia',e:'🇦🇺'},visita:{n:'Turquía',e:'🇹🇷'},fecha:'2026-06-13',gols:{l:null,v:null}},
-  {id:'D3',grupo:'D',local:{n:'Estados Unidos',e:'🇺🇸'},visita:{n:'Turquía',e:'🇹🇷'},fecha:'2026-06-18',gols:{l:null,v:null}},
-  {id:'D4',grupo:'D',local:{n:'Paraguay',e:'🇵🇾'},visita:{n:'Australia',e:'🇦🇺'},fecha:'2026-06-18',gols:{l:null,v:null}},
-  {id:'D5',grupo:'D',local:{n:'Turquía',e:'🇹🇷'},visita:{n:'Paraguay',e:'🇵🇾'},fecha:'2026-06-22',gols:{l:null,v:null}},
-  {id:'D6',grupo:'D',local:{n:'Australia',e:'🇦🇺'},visita:{n:'Estados Unidos',e:'🇺🇸'},fecha:'2026-06-22',gols:{l:null,v:null}},
-  // GRUPO E: Alemania, Curazao, Costa de Marfil, Ecuador
-  {id:'E1',grupo:'E',local:{n:'Alemania',e:'🇩🇪'},visita:{n:'Curazao',e:'🇨🇼'},fecha:'2026-06-14',gols:{l:null,v:null}},
-  {id:'E2',grupo:'E',local:{n:'Costa de Marfil',e:'🇨🇮'},visita:{n:'Ecuador',e:'🇪🇨'},fecha:'2026-06-14',gols:{l:null,v:null}},
-  {id:'E3',grupo:'E',local:{n:'Alemania',e:'🇩🇪'},visita:{n:'Costa de Marfil',e:'🇨🇮'},fecha:'2026-06-18',gols:{l:null,v:null}},
-  {id:'E4',grupo:'E',local:{n:'Ecuador',e:'🇪🇨'},visita:{n:'Curazao',e:'🇨🇼'},fecha:'2026-06-18',gols:{l:null,v:null}},
-  {id:'E5',grupo:'E',local:{n:'Curazao',e:'🇨🇼'},visita:{n:'Costa de Marfil',e:'🇨🇮'},fecha:'2026-06-22',gols:{l:null,v:null}},
-  {id:'E6',grupo:'E',local:{n:'Ecuador',e:'🇪🇨'},visita:{n:'Alemania',e:'🇩🇪'},fecha:'2026-06-22',gols:{l:null,v:null}},
-  // GRUPO F: Países Bajos, Japón, Suecia, Túnez
-  {id:'F1',grupo:'F',local:{n:'Países Bajos',e:'🇳🇱'},visita:{n:'Japón',e:'🇯🇵'},fecha:'2026-06-14',gols:{l:null,v:null}},
-  {id:'F2',grupo:'F',local:{n:'Suecia',e:'🇸🇪'},visita:{n:'Túnez',e:'🇹🇳'},fecha:'2026-06-14',gols:{l:null,v:null}},
-  {id:'F3',grupo:'F',local:{n:'Países Bajos',e:'🇳🇱'},visita:{n:'Suecia',e:'🇸🇪'},fecha:'2026-06-19',gols:{l:null,v:null}},
-  {id:'F4',grupo:'F',local:{n:'Japón',e:'🇯🇵'},visita:{n:'Túnez',e:'🇹🇳'},fecha:'2026-06-19',gols:{l:null,v:null}},
-  {id:'F5',grupo:'F',local:{n:'Túnez',e:'🇹🇳'},visita:{n:'Países Bajos',e:'🇳🇱'},fecha:'2026-06-23',gols:{l:null,v:null}},
-  {id:'F6',grupo:'F',local:{n:'Japón',e:'🇯🇵'},visita:{n:'Suecia',e:'🇸🇪'},fecha:'2026-06-23',gols:{l:null,v:null}},
-  // GRUPO G: Bélgica, Egipto, Irán, Nueva Zelanda
-  {id:'G1',grupo:'G',local:{n:'Bélgica',e:'🇧🇪'},visita:{n:'Egipto',e:'🇪🇬'},fecha:'2026-06-15',gols:{l:null,v:null}},
-  {id:'G2',grupo:'G',local:{n:'Irán',e:'🇮🇷'},visita:{n:'Nueva Zelanda',e:'🇳🇿'},fecha:'2026-06-15',gols:{l:null,v:null}},
-  {id:'G3',grupo:'G',local:{n:'Bélgica',e:'🇧🇪'},visita:{n:'Irán',e:'🇮🇷'},fecha:'2026-06-19',gols:{l:null,v:null}},
-  {id:'G4',grupo:'G',local:{n:'Egipto',e:'🇪🇬'},visita:{n:'Nueva Zelanda',e:'🇳🇿'},fecha:'2026-06-19',gols:{l:null,v:null}},
-  {id:'G5',grupo:'G',local:{n:'Nueva Zelanda',e:'🇳🇿'},visita:{n:'Bélgica',e:'🇧🇪'},fecha:'2026-06-23',gols:{l:null,v:null}},
-  {id:'G6',grupo:'G',local:{n:'Egipto',e:'🇪🇬'},visita:{n:'Irán',e:'🇮🇷'},fecha:'2026-06-23',gols:{l:null,v:null}},
-  // GRUPO H: España, Arabia Saudita, Uruguay, Cabo Verde
-  {id:'H1',grupo:'H',local:{n:'España',e:'🇪🇸'},visita:{n:'Cabo Verde',e:'🇨🇻'},fecha:'2026-06-15',gols:{l:null,v:null}},
-  {id:'H2',grupo:'H',local:{n:'Arabia Saudita',e:'🇸🇦'},visita:{n:'Uruguay',e:'🇺🇾'},fecha:'2026-06-15',gols:{l:null,v:null}},
-  {id:'H3',grupo:'H',local:{n:'España',e:'🇪🇸'},visita:{n:'Arabia Saudita',e:'🇸🇦'},fecha:'2026-06-20',gols:{l:null,v:null}},
-  {id:'H4',grupo:'H',local:{n:'Cabo Verde',e:'🇨🇻'},visita:{n:'Uruguay',e:'🇺🇾'},fecha:'2026-06-20',gols:{l:null,v:null}},
-  {id:'H5',grupo:'H',local:{n:'Uruguay',e:'🇺🇾'},visita:{n:'España',e:'🇪🇸'},fecha:'2026-06-24',gols:{l:null,v:null}},
-  {id:'H6',grupo:'H',local:{n:'Arabia Saudita',e:'🇸🇦'},visita:{n:'Cabo Verde',e:'🇨🇻'},fecha:'2026-06-24',gols:{l:null,v:null}},
-  // GRUPO I: Francia, Senegal, Irak, Noruega
-  {id:'I1',grupo:'I',local:{n:'Francia',e:'🇫🇷'},visita:{n:'Senegal',e:'🇸🇳'},fecha:'2026-06-16',gols:{l:null,v:null}},
-  {id:'I2',grupo:'I',local:{n:'Irak',e:'🇮🇶'},visita:{n:'Noruega',e:'🇳🇴'},fecha:'2026-06-16',gols:{l:null,v:null}},
-  {id:'I3',grupo:'I',local:{n:'Francia',e:'🇫🇷'},visita:{n:'Irak',e:'🇮🇶'},fecha:'2026-06-20',gols:{l:null,v:null}},
-  {id:'I4',grupo:'I',local:{n:'Senegal',e:'🇸🇳'},visita:{n:'Noruega',e:'🇳🇴'},fecha:'2026-06-20',gols:{l:null,v:null}},
-  {id:'I5',grupo:'I',local:{n:'Noruega',e:'🇳🇴'},visita:{n:'Francia',e:'🇫🇷'},fecha:'2026-06-24',gols:{l:null,v:null}},
-  {id:'I6',grupo:'I',local:{n:'Irak',e:'🇮🇶'},visita:{n:'Senegal',e:'🇸🇳'},fecha:'2026-06-24',gols:{l:null,v:null}},
-  // GRUPO J: Argentina, Argelia, Austria, Jordania
-  {id:'J1',grupo:'J',local:{n:'Argentina',e:'🇦🇷'},visita:{n:'Argelia',e:'🇩🇿'},fecha:'2026-06-16',gols:{l:null,v:null}},
-  {id:'J2',grupo:'J',local:{n:'Austria',e:'🇦🇹'},visita:{n:'Jordania',e:'🇯🇴'},fecha:'2026-06-16',gols:{l:null,v:null}},
-  {id:'J3',grupo:'J',local:{n:'Argentina',e:'🇦🇷'},visita:{n:'Austria',e:'🇦🇹'},fecha:'2026-06-21',gols:{l:null,v:null}},
-  {id:'J4',grupo:'J',local:{n:'Argelia',e:'🇩🇿'},visita:{n:'Jordania',e:'🇯🇴'},fecha:'2026-06-21',gols:{l:null,v:null}},
-  {id:'J5',grupo:'J',local:{n:'Jordania',e:'🇯🇴'},visita:{n:'Argentina',e:'🇦🇷'},fecha:'2026-06-25',gols:{l:null,v:null}},
-  {id:'J6',grupo:'J',local:{n:'Argelia',e:'🇩🇿'},visita:{n:'Austria',e:'🇦🇹'},fecha:'2026-06-25',gols:{l:null,v:null}},
-  // GRUPO K: Portugal, DR Congo, Uzbekistán, Colombia
-  {id:'K1',grupo:'K',local:{n:'Portugal',e:'🇵🇹'},visita:{n:'DR Congo',e:'🇨🇩'},fecha:'2026-06-17',gols:{l:null,v:null}},
-  {id:'K2',grupo:'K',local:{n:'Uzbekistán',e:'🇺🇿'},visita:{n:'Colombia',e:'🇨🇴'},fecha:'2026-06-17',gols:{l:null,v:null}},
-  {id:'K3',grupo:'K',local:{n:'Portugal',e:'🇵🇹'},visita:{n:'Uzbekistán',e:'🇺🇿'},fecha:'2026-06-22',gols:{l:null,v:null}},
-  {id:'K4',grupo:'K',local:{n:'DR Congo',e:'🇨🇩'},visita:{n:'Colombia',e:'🇨🇴'},fecha:'2026-06-22',gols:{l:null,v:null}},
-  {id:'K5',grupo:'K',local:{n:'Colombia',e:'🇨🇴'},visita:{n:'Portugal',e:'🇵🇹'},fecha:'2026-06-26',gols:{l:null,v:null}},
-  {id:'K6',grupo:'K',local:{n:'DR Congo',e:'🇨🇩'},visita:{n:'Uzbekistán',e:'🇺🇿'},fecha:'2026-06-26',gols:{l:null,v:null}},
-  // GRUPO L: Inglaterra, Croacia, Ghana, Panamá
-  {id:'L1',grupo:'L',local:{n:'Inglaterra',e:'🏴󠁧󠁢󠁥󠁮󠁧󠁿'},visita:{n:'Croacia',e:'🇭🇷'},fecha:'2026-06-17',gols:{l:null,v:null}},
-  {id:'L2',grupo:'L',local:{n:'Ghana',e:'🇬🇭'},visita:{n:'Panamá',e:'🇵🇦'},fecha:'2026-06-17',gols:{l:null,v:null}},
-  {id:'L3',grupo:'L',local:{n:'Inglaterra',e:'🏴󠁧󠁢󠁥󠁮󠁧󠁿'},visita:{n:'Ghana',e:'🇬🇭'},fecha:'2026-06-22',gols:{l:null,v:null}},
-  {id:'L4',grupo:'L',local:{n:'Croacia',e:'🇭🇷'},visita:{n:'Panamá',e:'🇵🇦'},fecha:'2026-06-22',gols:{l:null,v:null}},
-  {id:'L5',grupo:'L',local:{n:'Panamá',e:'🇵🇦'},visita:{n:'Inglaterra',e:'🏴󠁧󠁢󠁥󠁮󠁧󠁿'},fecha:'2026-06-27',gols:{l:null,v:null}},
-  {id:'L6',grupo:'L',local:{n:'Croacia',e:'🇭🇷'},visita:{n:'Ghana',e:'🇬🇭'},fecha:'2026-06-27',gols:{l:null,v:null}},
-];
+let banco = [];          // [{id,materia,nivelBloom,n,pregunta,a,b,c,d,correcta,retro}]
+let progreso = {};       // { materia: {indice,correctas,incorrectas,noContestadas,completada} }
+let respuestas = {};     // { materia: [{preguntaId,respuesta,esCorrecta,agotado}] }
 
-let estado = {
-  yo: null,
-  participantes: [],
-  partidos: JSON.parse(JSON.stringify(PARTIDOS_INICIAL)),
-  pronosticos: {},
-  historialEdiciones: {}, // { participanteId: { partidoId: [{fecha, l, v}] } }
-  permisos: {            // { participanteId: { abierto: bool, otorgadoPor, fecha } } o 'todos'
-    todosAbiertos: false,
-    individuales: {}
-  },
-  config: { nombre: 'Polla Mundial 2026', fechaCierre: '2026-06-11T14:00' }
-};
+let materiaActual = '';
+let preguntasMateria = [];
+let indiceActual = 0;
+let correctasActual = 0;
+let incorrectasActual = 0;
+let noContestadas = 0;
+let timerInterval = null;
+let tiempoRestante = TIEMPO_POR_PREGUNTA;
 
-// Google Drive state
-let gdrive = {
-  clientId: null,
-  accessToken: null,
-  email: null,
-  fileId: null,
-  tokenClient: null,
-  sincronizando: false
-};
+// Modo repaso
+let modoRepaso = false;           // true = sesión de repaso activa
+let repasoProgreso = {};          // { materia: {indice, correctas, incorrectas, noContestadas, completada, tiempoRestante} }
+let repasoRespuestas = {};        // { materia: [{preguntaId, respuesta, esCorrecta, agotado}] }
+let materiaResultadoActual = '';  // materia que se muestra en resultado
 
-let filtroActual = 'todos';
-let crInterval = null;
-let autoSyncInterval = null;
+/* ============================================================
+   PERSISTENCIA — LocalStorage
+   ============================================================ */
+function guardarBanco()        { try { localStorage.setItem(STORAGE_KEY,     JSON.stringify(banco)); } catch(e){} }
+function guardarProgreso()     { try { localStorage.setItem(PROGRESO_KEY,    JSON.stringify(progreso)); } catch(e){} }
+function guardarRespuestas()   { try { localStorage.setItem(RESPUESTAS_KEY,  JSON.stringify(respuestas)); } catch(e){} }
+function guardarRepasoProgreso(){ try { localStorage.setItem(REPASO_PROG_KEY, JSON.stringify(repasoProgreso)); } catch(e){} }
+function guardarRepasoResp()   { try { localStorage.setItem(REPASO_RESP_KEY,  JSON.stringify(repasoRespuestas)); } catch(e){} }
 
-// ══════════════════════════════════════════════════
-// PERSISTENCIA LOCAL
-// ══════════════════════════════════════════════════
-function sanitizar(str) {
-  if (typeof str !== 'string') return '';
-  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#x27;');
-}
-function guardar(clave, datos) {
-  try { localStorage.setItem(`${APP_KEY}_${clave}`, JSON.stringify(datos)); return true; }
-  catch(e) { toast('⚠️ Error al guardar localmente', 'error'); return false; }
-}
-function cargar(clave, def = null) {
-  try { const v = localStorage.getItem(`${APP_KEY}_${clave}`); return v !== null ? JSON.parse(v) : def; }
-  catch(e) { return def; }
-}
-function guardarEstado() {
-  guardar('estado', estado);
-}
-// Versión de los partidos — cambiar cuando se actualicen los grupos
-const PARTIDOS_VERSION = '2026_oficial_v2';
-
-function cargarEstado() {
-  const g = cargar('estado');
-  if (g) {
-    estado = g;
-    if (!estado.pronosticos) estado.pronosticos = {};
-    if (!estado.historialEdiciones) estado.historialEdiciones = {};
-    if (!estado.permisos) estado.permisos = { todosAbiertos: false, individuales: {} };
-    if (!estado.config) estado.config = { nombre:'Polla Mundial 2026', fechaCierre:'2026-06-11T14:00' };
-
-    // ⚠️ MIGRACIÓN: si los partidos son de una versión antigua, reemplazarlos
-    // preservando pronósticos y participantes
-    const versionGuardada = cargar('partidos_version');
-    if (versionGuardada !== PARTIDOS_VERSION) {
-      console.log('Actualizando partidos a versión oficial 2026...');
-      estado.partidos = JSON.parse(JSON.stringify(PARTIDOS_INICIAL));
-      guardar('partidos_version', PARTIDOS_VERSION);
-      // Los pronósticos quedan huérfanos (IDs cambiaron) pero se conservan
-      // participantes, config y el yo del usuario
-    }
-  } else {
-    guardar('partidos_version', PARTIDOS_VERSION);
-  }
-  // Cargar config de Google Drive
-  gdrive.clientId = cargar('gdrive_client_id');
-  gdrive.fileId   = cargar('gdrive_file_id');
-}
-
-// ══════════════════════════════════════════════════
-// SINCRONIZACIÓN - INDICADOR
-// ══════════════════════════════════════════════════
-function setSyncStatus(status, msg) {
-  const dot = document.getElementById('sync-dot');
-  const txt = document.getElementById('sync-txt');
-  if (!dot || !txt) return;
-  dot.className = 'sync-dot ' + (status === 'ok' ? 'verde' : status === 'error' ? 'rojo' : 'amarillo');
-  txt.textContent = msg;
-}
-
-// ══════════════════════════════════════════════════
-// GOOGLE IDENTITY SERVICES — OAuth2
-// ══════════════════════════════════════════════════
-function inicializarGSI() {
-  if (!gdrive.clientId || typeof google === 'undefined') return;
+function cargarDesdeStorage() {
   try {
-    gdrive.tokenClient = google.accounts.oauth2.initTokenClient({
-      client_id: gdrive.clientId,
-      scope: DRIVE_SCOPE,
-      callback: (resp) => {
-        if (resp.error) { toast('❌ Error de autenticación: ' + resp.error, 'error'); setSyncStatus('error','Sin conexión a Drive'); return; }
-        gdrive.accessToken = resp.access_token;
-        guardar('gdrive_token_exp', Date.now() + (resp.expires_in * 1000));
-        obtenerInfoUsuario().then(() => {
-          setSyncStatus('amarillo','Sincronizando...');
-          sincronizarDesdeNube().then(() => {
-            renderAdmin();
-            toast('✅ Conectado a Google Drive', 'exito');
-          });
+    const b = localStorage.getItem(STORAGE_KEY);
+    if (b) banco = JSON.parse(b);
+    const p = localStorage.getItem(PROGRESO_KEY);
+    if (p) progreso = JSON.parse(p);
+    const r = localStorage.getItem(RESPUESTAS_KEY);
+    if (r) respuestas = JSON.parse(r);
+    const rp = localStorage.getItem(REPASO_PROG_KEY);
+    if (rp) repasoProgreso = JSON.parse(rp);
+    const rr = localStorage.getItem(REPASO_RESP_KEY);
+    if (rr) repasoRespuestas = JSON.parse(rr);
+  } catch(e) { console.error('Storage error', e); }
+}
+
+/* ============================================================
+   LEER EXCEL con SheetJS
+   ============================================================ */
+function cargarExcel(input) {
+  const file = input.files[0];
+  if (!file) return;
+
+  mostrarSpinner(true);
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const wb   = XLSX.read(e.target.result, { type: 'binary' });
+      const ws   = wb.Sheets[wb.SheetNames[0]];      // primera hoja siempre
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+      const nuevas = [];
+      for (let i = 1; i < rows.length; i++) {       // saltar encabezado
+        const r = rows[i];
+        const id = parseInt(r[0]);
+        if (isNaN(id) || !r[4]) continue;            // sin ID o sin pregunta → saltar
+        const correcta = String(r[9]).trim().toUpperCase();
+        if (!['A','B','C','D'].includes(correcta)) continue;
+
+        nuevas.push({
+          id,
+          materia:   String(r[1]).trim(),
+          nivelBloom:String(r[2]).trim(),
+          n:         parseInt(r[3]) || i,
+          pregunta:  String(r[4]).trim(),
+          a:         String(r[5]).trim(),
+          b:         String(r[6]).trim(),
+          c:         String(r[7]).trim(),
+          d:         String(r[8]).trim(),
+          correcta,
+          retro:     String(r[10]).trim()
         });
       }
-    });
-  } catch(e) { console.error('GSI init error', e); }
-}
 
-function loginGoogle() {
-  if (!gdrive.clientId) { abrirModalClientId(); return; }
-  if (typeof google === 'undefined') {
-    toast('⚠️ Cargando Google Sign-In... espera un momento y vuelve a intentarlo', 'alerta', 4000);
-    setTimeout(() => inicializarGSI(), 2000);
-    return;
-  }
-  if (!gdrive.tokenClient) inicializarGSI();
-  if (!gdrive.tokenClient) { toast('❌ No se pudo inicializar Google Sign-In. Verifica el Client ID.', 'error'); return; }
-  gdrive.tokenClient.requestAccessToken({ prompt: 'consent' });
-}
-
-function logoutGoogle() {
-  confirmar('¿Cerrar sesión de Google Drive?', 'Los datos seguirán en el dispositivo. Solo se desconecta la sincronización.', () => {
-    if (gdrive.accessToken && typeof google !== 'undefined') {
-      google.accounts.oauth2.revoke(gdrive.accessToken, () => {});
-    }
-    gdrive.accessToken = null;
-    gdrive.email = null;
-    guardar('gdrive_token_exp', null);
-    setSyncStatus('rojo', 'Desconectado de Drive');
-    renderAdmin();
-    toast('👋 Sesión de Google Drive cerrada', 'info');
-  });
-}
-
-async function obtenerInfoUsuario() {
-  if (!gdrive.accessToken) return;
-  try {
-    const r = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-      headers: { Authorization: 'Bearer ' + gdrive.accessToken }
-    });
-    if (r.ok) {
-      const d = await r.json();
-      gdrive.email = d.email || d.name || 'Administrador';
-    }
-  } catch(e) {}
-}
-
-// ══════════════════════════════════════════════════
-// GOOGLE DRIVE API — Operaciones de archivo
-// ══════════════════════════════════════════════════
-async function buscarArchivoEnDrive() {
-  if (!gdrive.accessToken) return null;
-  try {
-    const q = encodeURIComponent(`name='${NOMBRE_ARCHIVO}' and trashed=false`);
-    const r = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime)`, {
-      headers: { Authorization: 'Bearer ' + gdrive.accessToken }
-    });
-    if (!r.ok) return null;
-    const d = await r.json();
-    if (d.files && d.files.length > 0) {
-      gdrive.fileId = d.files[0].id;
-      guardar('gdrive_file_id', gdrive.fileId);
-      return gdrive.fileId;
-    }
-    return null;
-  } catch(e) { return null; }
-}
-
-// ── Hacer el archivo público (cualquiera con el link puede leerlo) ──
-async function hacerArchivoPublico(fileId) {
-  try {
-    await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/permissions`, {
-      method: 'POST',
-      headers: { Authorization: 'Bearer ' + gdrive.accessToken, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ role: 'reader', type: 'anyone' })
-    });
-    guardar('gdrive_file_public', true);
-  } catch(e) { console.warn('No se pudo hacer público:', e); }
-}
-
-// ── ESCRITURA (solo admin con token) ──
-async function escribirEnDrive(datos) {
-  if (!gdrive.accessToken) return false;
-  if (gdrive.sincronizando) return false;
-  gdrive.sincronizando = true;
-  setSyncStatus('amarillo', 'Guardando en Drive...');
-  const body = JSON.stringify(datos);
-  try {
-    let fid = gdrive.fileId || await buscarArchivoEnDrive();
-    if (fid) {
-      const ru = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fid}?uploadType=media`, {
-        method: 'PATCH',
-        headers: { Authorization: 'Bearer ' + gdrive.accessToken, 'Content-Type': 'application/json' },
-        body
-      });
-      if (!ru.ok) throw new Error('Error actualizando archivo');
-    } else {
-      // Crear archivo nuevo
-      const meta = JSON.stringify({ name: NOMBRE_ARCHIVO, mimeType: 'application/json' });
-      const form = new FormData();
-      form.append('metadata', new Blob([meta], { type: 'application/json' }));
-      form.append('file', new Blob([body], { type: 'application/json' }));
-      const rc = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
-        method: 'POST',
-        headers: { Authorization: 'Bearer ' + gdrive.accessToken },
-        body: form
-      });
-      if (!rc.ok) throw new Error('Error creando archivo');
-      const dc = await rc.json();
-      gdrive.fileId = dc.id;
-      guardar('gdrive_file_id', gdrive.fileId);
-      // Hacerlo público para que usuarios lo lean sin login
-      await hacerArchivoPublico(gdrive.fileId);
-      // Guardar el File ID público para que usuarios lo usen
-      guardar('gdrive_public_file_id', gdrive.fileId);
-    }
-    // Asegurarse que siga siendo público tras cada actualización
-    if (gdrive.fileId && !cargar('gdrive_file_public')) {
-      await hacerArchivoPublico(gdrive.fileId);
-    }
-    setSyncStatus('ok', '✅ Sincronizado · ' + new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}));
-    gdrive.sincronizando = false;
-    return true;
-  } catch(e) {
-    gdrive.sincronizando = false;
-    setSyncStatus('error', '⚠️ Error al sincronizar');
-    console.error('Drive write error:', e);
-    return false;
-  }
-}
-
-// ── LECTURA PÚBLICA (usuarios sin login, usando file ID guardado) ──
-async function leerDesdeDrivePublico() {
-  // El File ID lo guarda el admin en localStorage la primera vez que sube
-  const fid = cargar('gdrive_public_file_id') || gdrive.fileId || cargar('gdrive_file_id');
-  if (!fid) return null;
-  try {
-    // Lectura pública via export link — no requiere token
-    const url = `https://www.googleapis.com/drive/v3/files/${fid}?alt=media&key=${gdrive.apiKey||''}`;
-    // Intentar primero sin autenticación (archivo público)
-    const r = await fetch(`https://drive.google.com/uc?export=download&id=${fid}`);
-    if (r.ok) {
-      const text = await r.text();
-      try { return JSON.parse(text); } catch(e) { return null; }
-    }
-    return null;
-  } catch(e) { return null; }
-}
-
-// ── LECTURA CON TOKEN (admin) ──
-async function leerDesdeDrive() {
-  if (!gdrive.accessToken) return null;
-  let fid = gdrive.fileId || await buscarArchivoEnDrive();
-  if (!fid) return null;
-  try {
-    const r = await fetch(`https://www.googleapis.com/drive/v3/files/${fid}?alt=media`, {
-      headers: { Authorization: 'Bearer ' + gdrive.accessToken }
-    });
-    if (!r.ok) { gdrive.fileId = null; return null; }
-    return await r.json();
-  } catch(e) { return null; }
-}
-
-// ── SINCRONIZAR DESDE NUBE (admin con token) ──
-async function sincronizarDesdeNube() {
-  if (!gdrive.accessToken) {
-    // Usuario normal: intentar lectura pública
-    await cargarDatosPublicos();
-    return;
-  }
-  setSyncStatus('amarillo', 'Sincronizando...');
-  spinner(true, 'Cargando datos de la nube...');
-  try {
-    const datos = await leerDesdeDrive();
-    if (datos) {
-      const yoLocal = estado.yo;
-      estado = { ...datos };
-      if (!estado.pronosticos) estado.pronosticos = {};
-      if (!estado.historialEdiciones) estado.historialEdiciones = {};
-      if (!estado.permisos) estado.permisos = { todosAbiertos: false, individuales: {} };
-      if (!estado.config) estado.config = { nombre:'Polla Mundial 2026', fechaCierre:'2026-06-11T14:00' };
-      if (yoLocal && !estado.participantes.find(p => p.id === yoLocal.id)) {
-        estado.yo = yoLocal;
-        estado.participantes.push({ ...yoLocal });
-        await guardarEnNube();
-      } else if (yoLocal) {
-        estado.yo = yoLocal;
+      if (nuevas.length === 0) {
+        mostrarSpinner(false);
+        toast('❌ No se encontraron preguntas válidas');
+        return;
       }
-      guardarEstado();
-      setSyncStatus('ok', '✅ Sincronizado · ' + new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}));
-    } else {
-      await guardarEnNube();
+
+      // Reemplazar banco y limpiar progreso/respuestas
+      banco = nuevas;
+      progreso = {};
+      respuestas = {};
+      guardarBanco();
+      guardarProgreso();
+      guardarRespuestas();
+
+      actualizarUIInicio();
+      mostrarSpinner(false);
+      toast(`✅ ${nuevas.length} preguntas cargadas correctamente`);
+
+    } catch(err) {
+      mostrarSpinner(false);
+      toast('❌ Error al leer el archivo: ' + err.message);
+      console.error(err);
     }
-  } catch(e) {
-    setSyncStatus('error', '⚠️ Error al sincronizar');
-  }
-  spinner(false);
-  renderInicio();
+  };
+  reader.onerror = () => { mostrarSpinner(false); toast('❌ No se pudo leer el archivo'); };
+  reader.readAsBinaryString(file);
+  input.value = ''; // permitir recargar el mismo archivo
 }
 
-// ── CARGA INICIAL PARA USUARIOS (sin login) ──
-async function cargarDatosPublicos() {
-  const fid = cargar('gdrive_public_file_id') || cargar('gdrive_file_id');
-  if (!fid) {
-    // No hay file ID guardado — funciona solo en modo local
-    setSyncStatus('amarillo', '📱 Modo local — sin Drive configurado');
+/* ============================================================
+   UI INICIO
+   ============================================================ */
+function actualizarUIInicio() {
+  const total = banco.length;
+  const info  = document.getElementById('bancoInfo');
+  const btn   = document.getElementById('btnVerMaterias');
+
+  if (total > 0) {
+    const materias = [...new Set(banco.map(p => p.materia))];
+    info.textContent = `📚 ${total} preguntas · ${materias.length} materias cargadas`;
+    info.className = 'banco-info activo';
+    btn.disabled = false;
+  } else {
+    info.textContent = 'Sin banco de preguntas cargado. Seleccione un archivo Excel para comenzar.';
+    info.className = 'banco-info';
+    btn.disabled = true;
+  }
+}
+
+/* ============================================================
+   PANTALLA MATERIAS
+   ============================================================ */
+function renderMaterias() {
+  const materias = [...new Set(banco.map(p => p.materia))].sort();
+  const lista = document.getElementById('listaMaterias');
+  lista.innerHTML = '';
+
+  if (materias.length === 0) {
+    lista.innerHTML = '<p style="text-align:center;color:var(--texto-claro);padding:40px 20px;">No hay materias disponibles.</p>';
     return;
   }
-  setSyncStatus('amarillo', 'Cargando datos compartidos...');
-  spinner(true, 'Cargando datos del grupo...');
-  try {
-    const datos = await leerDesdeDrivePublico();
-    if (datos) {
-      const yoLocal = estado.yo;
-      const misPronosticos = yoLocal && estado.pronosticos[yoLocal.id]
-        ? estado.pronosticos[yoLocal.id] : null;
-      estado = { ...datos };
-      if (!estado.pronosticos) estado.pronosticos = {};
-      if (!estado.historialEdiciones) estado.historialEdiciones = {};
-      if (!estado.permisos) estado.permisos = { todosAbiertos: false, individuales: {} };
-      if (!estado.config) estado.config = { nombre:'Polla Mundial 2026', fechaCierre:'2026-06-11T14:00' };
-      if (yoLocal) {
-        estado.yo = yoLocal;
-        // Restaurar pronósticos locales si no están en la nube aún
-        if (misPronosticos && !estado.pronosticos[yoLocal.id]) {
-          estado.pronosticos[yoLocal.id] = misPronosticos;
-        }
-        // Si el usuario no está en participantes, agregarlo y subir
-        if (!estado.participantes.find(p => p.id === yoLocal.id)) {
-          estado.participantes.push({ ...yoLocal });
-          // Pedir al usuario que sincronice (no puede escribir sin ser admin)
-          setSyncStatus('amarillo', '⚠️ Perfil nuevo — pide al admin que sincronice');
+
+  materias.forEach(mat => {
+    const pg   = progreso[mat];
+    const total = banco.filter(p => p.materia === mat).length;
+    const card = document.createElement('div');
+    card.className = 'materia-card';
+
+    let estadoHtml = '', barraW = 0, calHtml = '', botonesHtml = '';
+
+    if (!pg) {
+      estadoHtml = `<div class="materia-estado estado-pendiente">⬜ Sin iniciar</div>`;
+      botonesHtml = `<button class="btn btn-primario" onclick="iniciarMateria('${escapar(mat)}')">▶ Iniciar</button>`;
+    } else if (pg.completada) {
+      barraW = Math.round(pg.correctas * 100 / total);
+      estadoHtml = `<div class="materia-estado estado-completa">✅ Completada</div>`;
+      calHtml = `<span class="calificacion-chip">📊 ${pg.correctas} / ${total} correctas · ${barraW}%</span>`;
+
+      // Calcular errores para mostrar estado de repaso
+      const rpg = repasoProgreso[mat];
+      const erroresOriginales = obtenerIdsErrores(mat);
+      let repasoHtml = '';
+      if (erroresOriginales.length > 0) {
+        if (!rpg) {
+          repasoHtml = `<div><span class="repaso-chip">🔁 Repaso disponible</span> <span style="font-size:11px;color:var(--texto-claro)">${erroresOriginales.length} preguntas incorrectas</span></div>`;
+        } else if (rpg.completada) {
+          const rpct = Math.round(rpg.correctas * 100 / erroresOriginales.length);
+          repasoHtml = `<div><span class="repaso-chip">🔁 Repaso completado</span> <span style="font-size:11px;color:var(--naranja)">${rpg.correctas}/${erroresOriginales.length} · ${rpct}%</span></div>`;
+        } else {
+          repasoHtml = `<div><span class="repaso-chip">🔁 Repaso en progreso</span><span class="repaso-chip-progreso">${rpg.indice}/${erroresOriginales.length}</span></div>`;
         }
       }
-      guardarEstado();
-      setSyncStatus('ok', '✅ Datos cargados · ' + new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}));
+      calHtml += repasoHtml;
+
+      // Botón de repaso directo según estado
+      let btnRepasoDirecto = '';
+      if (erroresOriginales.length > 0) {
+        if (!rpg || rpg.completada) {
+          // Repaso disponible o reiniciar repaso
+          const labelRepaso = rpg && rpg.completada
+            ? `🔁 Repetir repaso`
+            : `🔁 Repasar (${erroresOriginales.length})`;
+          btnRepasoDirecto = `<button class="btn btn-repaso" style="margin-top:8px;" onclick="iniciarRepaso('${escapar(mat)}')">${labelRepaso}</button>`;
+        } else {
+          // Repaso en progreso — continuar
+          btnRepasoDirecto = `<button class="btn btn-repaso" style="margin-top:8px;" onclick="iniciarRepaso('${escapar(mat)}')">🔁 Continuar repaso (${rpg.indice}/${erroresOriginales.length})</button>`;
+        }
+      }
+
+      botonesHtml = `
+        <button class="btn btn-secundario" style="flex:1" onclick="verResultado('${escapar(mat)}')">📄 Ver Resultado</button>
+        <button class="btn-reset-materia" onclick="confirmarResetMateria('${escapar(mat)}')">↺</button>`;
+      if (btnRepasoDirecto) {
+        botonesHtml += `</div><div class="materia-acciones" style="margin-top:0;">` + btnRepasoDirecto;
+      }
     } else {
-      setSyncStatus('amarillo', '📱 Datos locales — sin conexión a Drive');
+      const respo = pg.indice;
+      barraW = Math.round(respo * 100 / total);
+      estadoHtml = `<div class="materia-estado estado-progreso">⏳ En progreso (${respo}/${total})</div>`;
+      botonesHtml = `
+        <button class="btn btn-primario" onclick="iniciarMateria('${escapar(mat)}')">▶ Continuar</button>
+        <button class="btn-reset-materia" onclick="confirmarResetMateria('${escapar(mat)}')">↺</button>`;
     }
-  } catch(e) {
-    setSyncStatus('amarillo', '📱 Usando datos locales');
-  }
-  spinner(false);
-  renderInicio();
+
+    const barraClass = pg && pg.completada ? 'completa' : '';
+
+    card.innerHTML = `
+      <div class="materia-nombre">${mat}</div>
+      ${estadoHtml}
+      ${calHtml}
+      <div class="barra-progreso"><div class="barra-progreso-fill ${barraClass}" style="width:${barraW}%"></div></div>
+      <div class="materia-acciones">${botonesHtml}</div>`;
+    lista.appendChild(card);
+  });
 }
 
-async function guardarEnNube() {
-  if (!gdrive.accessToken) return;
-  const datosNube = {
-    participantes: estado.participantes.map(p => ({...p, foto: p.foto ? '[foto_local]' : null})),
-    partidos: estado.partidos,
-    pronosticos: estado.pronosticos,
-    historialEdiciones: estado.historialEdiciones || {},
-    permisos: estado.permisos || { todosAbiertos: false, individuales: {} },
-    config: estado.config,
-    _actualizado: new Date().toISOString()
-  };
-  await escribirEnDrive(datosNube);
+function escapar(str) { return str.replace(/'/g, "\\'"); }
+
+
+/* ============================================================
+   HELPERS REPASO
+   ============================================================ */
+// Devuelve array de IDs de preguntas incorrectas/agotadas de una materia
+function obtenerIdsErrores(mat) {
+  const resps = respuestas[mat] || [];
+  return resps
+    .filter(r => !r.esCorrecta)
+    .map(r => r.preguntaId);
 }
 
-// Auto-sync: admin cada 2 min, usuarios cada 90 seg
-function iniciarAutoSync() {
-  if (autoSyncInterval) clearInterval(autoSyncInterval);
-  autoSyncInterval = setInterval(() => {
-    if (gdrive.accessToken) sincronizarDesdeNube();
-    else cargarDatosPublicos();
-  }, 90000);
+// Devuelve las preguntas del banco que corresponden a errores, en orden
+function obtenerPreguntasRepaso(mat) {
+  const ids = obtenerIdsErrores(mat);
+  const todasPreguntas = banco.filter(p => p.materia === mat).sort((a,b) => a.n - b.n);
+  return todasPreguntas.filter(p => ids.includes(p.id));
 }
 
-// ══════════════════════════════════════════════════
-// MODAL CLIENT ID
-// ══════════════════════════════════════════════════
-function abrirModalClientId() {
-  document.getElementById('inp-client-id').value = gdrive.clientId || '';
-  limpiarError('campo-client-id');
-  document.getElementById('modalClientId').classList.add('activo');
-}
-function cerrarModalClientId() {
-  document.getElementById('modalClientId').classList.remove('activo');
-}
-function guardarClientId() {
-  const val = document.getElementById('inp-client-id').value.trim();
-  if (!val || !val.includes('.apps.googleusercontent.com')) {
-    marcarError('campo-client-id', 'El Client ID debe terminar en .apps.googleusercontent.com');
-    toast('⚠️ Client ID inválido', 'alerta'); return;
-  }
-  limpiarError('campo-client-id');
-  gdrive.clientId = val;
-  guardar('gdrive_client_id', val);
-  cerrarModalClientId();
-  inicializarGSI();
-  toast('🔑 Client ID guardado. Ahora inicia sesión con Google.', 'exito', 4000);
-  renderAdmin();
-}
+/* ============================================================
+   INICIAR MATERIA / SESIÓN DE PREGUNTAS
+   ============================================================ */
+function iniciarMateria(mat) {
+  modoRepaso    = false;
+  materiaActual = mat;
+  preguntasMateria = banco.filter(p => p.materia === mat).sort((a,b) => a.n - b.n);
 
-// ══════════════════════════════════════════════════
-// NAVEGACIÓN
-// ══════════════════════════════════════════════════
-function cambiarTab(pantallaId, btn) {
-  document.querySelectorAll('.pantalla').forEach(p => p.classList.remove('activa'));
-  document.getElementById(pantallaId).classList.add('activa');
-  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('activo'));
-  if (btn) btn.classList.add('activo');
-  window.scrollTo(0, 0);
-  if (pantallaId === 'p-partidos') renderPartidos();
-  if (pantallaId === 'p-tabla') renderTabla();
-  if (pantallaId === 'p-pronosticos') renderPronosticos();
-  if (pantallaId === 'p-admin') renderAdmin();
-}
-
-// ══════════════════════════════════════════════════
-// TOAST / MODAL / SPINNER
-// ══════════════════════════════════════════════════
-function toast(msg, tipo = 'info', dur = 3500) {
-  const el = document.getElementById('toast');
-  el.textContent = msg;
-  el.className = 'toast show ' + tipo;
-  clearTimeout(el._t);
-  el._t = setTimeout(() => el.classList.remove('show'), dur);
-}
-function confirmar(titulo, texto, cb) {
-  document.getElementById('modalTitulo').textContent = titulo;
-  document.getElementById('modalTexto').textContent = texto;
-  document.getElementById('modalConfirmar').onclick = () => { cerrarModal(); cb(); };
-  document.getElementById('modalOverlay').classList.add('activo');
-}
-function cerrarModal() { document.getElementById('modalOverlay').classList.remove('activo'); }
-function spinner(show, texto = 'Procesando...') {
-  document.getElementById('spinnerTxt').textContent = texto;
-  document.getElementById('spinner').className = show ? 'show' : '';
-}
-
-// ══════════════════════════════════════════════════
-// VALIDACIONES
-// ══════════════════════════════════════════════════
-function marcarError(campoId, msg) {
-  const c = document.getElementById(campoId);
-  if (!c) return;
-  c.classList.add('invalido');
-  const em = c.querySelector('.error-msg');
-  if (em && msg) em.textContent = msg;
-}
-function limpiarError(campoId) {
-  const c = document.getElementById(campoId);
-  if (c) { c.classList.remove('invalido'); c.classList.remove('valido'); }
-}
-function marcarValido(campoId) {
-  const c = document.getElementById(campoId);
-  if (c) { c.classList.remove('invalido'); c.classList.add('valido'); }
-}
-function pollaAbierta() {
-  return new Date() < new Date(estado.config.fechaCierre);
-}
-
-// Verifica si un participante puede editar sus pronósticos
-function participantePuedeEditar(participanteId) {
-  if (pollaAbierta()) return true; // antes del cierre, todos pueden
-  if (!estado.permisos) return false;
-  if (estado.permisos.todosAbiertos) return true;
-  const ind = estado.permisos.individuales[participanteId];
-  return ind && ind.abierto === true;
-}
-
-// Texto de estado del permiso para un participante
-function textoPermiso(participanteId) {
-  if (pollaAbierta()) return null;
-  if (!estado.permisos) return null;
-  if (estado.permisos.todosAbiertos) return '🔓 Reabierto por el admin (todos)';
-  const ind = estado.permisos.individuales[participanteId];
-  if (ind && ind.abierto) return `🔓 Reabierto por el admin el ${new Date(ind.fecha).toLocaleString('es-ES',{dateStyle:'short',timeStyle:'short'})}`;
-  return null;
-}
-
-// ══════════════════════════════════════════════════
-// PERFIL
-// ══════════════════════════════════════════════════
-let fotoBase64Crear = null;
-function procesarFotoCrear(ev) {
-  const file = ev.target.files[0];
-  if (!file) return;
-  if (file.size > 5*1024*1024) { toast('❌ La foto no puede pesar más de 5MB', 'error'); return; }
-  if (!file.type.startsWith('image/')) { toast('❌ El archivo debe ser una imagen', 'error'); return; }
-  const r = new FileReader();
-  r.onload = e => {
-    fotoBase64Crear = e.target.result;
-    document.getElementById('foto-estado-txt').textContent = '✅ Foto lista — ' + file.name.substring(0,20);
-    toast('📷 Foto cargada', 'exito');
-  };
-  r.readAsDataURL(file);
-}
-async function crearPerfil() {
-  const nombre = document.getElementById('inp-nombre').value.trim();
-  if (nombre.length < 2) { marcarError('campo-nombre', 'Escribe al menos 2 caracteres.'); toast('⚠️ Escribe tu nombre', 'alerta'); return; }
-  marcarValido('campo-nombre');
-  estado.yo = { id: 'yo_' + Date.now(), nombre: sanitizar(nombre), foto: fotoBase64Crear, pts: 0, exactos: 0 };
-  if (!estado.participantes.find(p => p.id === estado.yo.id)) {
-    estado.participantes.unshift({ ...estado.yo });
-  }
-  guardarEstado();
-  if (gdrive.accessToken) {
-    spinner(true,'Guardando en la nube...');
-    await guardarEnNube();
-    spinner(false);
+  const pg = progreso[mat];
+  if (pg && !pg.completada) {
+    indiceActual     = pg.indice;
+    correctasActual  = pg.correctas;
+    incorrectasActual= pg.incorrectas;
+    noContestadas    = pg.noContestadas;
+    tiempoRestante   = pg.tiempoRestante || TIEMPO_POR_PREGUNTA;
   } else {
-    // Usuario normal: intentar bajar datos actualizados de Drive
-    await cargarDatosPublicos();
-    // Re-agregar su perfil si no está tras la sincronización
-    if (!estado.participantes.find(p => p.id === estado.yo.id)) {
-      estado.participantes.unshift({ ...estado.yo });
-      guardarEstado();
-    }
-    // Avisar que el admin debe sincronizar para que aparezca en la tabla
-    toast('✅ Perfil creado. Avisa al admin para que sincronice y aparezcas en la tabla.', 'info', 6000);
+    indiceActual = 0;
+    correctasActual = 0;
+    incorrectasActual = 0;
+    noContestadas = 0;
+    tiempoRestante = TIEMPO_POR_PREGUNTA;
   }
-  if (gdrive.accessToken) toast(`🎉 ¡Bienvenido/a, ${sanitizar(nombre)}!`, 'exito', 4000);
-  renderInicio();
-}
-function editarFoto() { document.getElementById('inputFoto').click(); }
-function procesarFoto(ev) {
-  const file = ev.target.files[0];
-  if (!file) return;
-  if (file.size > 5*1024*1024) { toast('❌ La foto no puede pesar más de 5MB', 'error'); return; }
-  const r = new FileReader();
-  r.onload = e => {
-    estado.yo.foto = e.target.result;
-    const p = estado.participantes.find(p => p.id === estado.yo.id);
-    if (p) p.foto = e.target.result;
-    guardarEstado();
-    actualizarAvatarUI();
-    toast('📷 Foto actualizada', 'exito');
-  };
-  r.readAsDataURL(file);
-}
-function actualizarAvatarUI() {
-  if (!estado.yo) return;
-  const img = document.getElementById('avatar-img');
-  const em  = document.getElementById('avatar-emoji');
-  if (estado.yo.foto) { img.src = estado.yo.foto; img.style.display='block'; em.style.display='none'; }
-  else { img.style.display='none'; em.style.display='block'; }
-}
 
-// ══════════════════════════════════════════════════
-// CUENTA REGRESIVA
-// ══════════════════════════════════════════════════
-function iniciarCuentaRegresiva() {
-  if (crInterval) clearInterval(crInterval);
-  crInterval = setInterval(actualizarCR, 1000);
-  actualizarCR();
-}
-function actualizarCR() {
-  const cierre = new Date(estado.config.fechaCierre);
-  const diff = cierre - new Date();
-  const fmt = n => String(Math.max(0,n)).padStart(2,'0');
-  if (diff <= 0) {
-    ['cr-d','cr-h','cr-m','cr-s'].forEach(id => { const el=document.getElementById(id); if(el) el.textContent='00'; });
-    const b = document.getElementById('estado-polla-banner');
-    if (b) b.innerHTML = '<div class="warn-banner">⏰ Los pronósticos están cerrados.</div>';
+  if (indiceActual >= preguntasMateria.length) {
+    verResultado(mat);
     return;
   }
-  const d=Math.floor(diff/86400000), h=Math.floor((diff%86400000)/3600000), m=Math.floor((diff%3600000)/60000), s=Math.floor((diff%60000)/1000);
-  [['cr-d',d],['cr-h',h],['cr-m',m],['cr-s',s]].forEach(([id,v]) => { const el=document.getElementById(id); if(el) el.textContent=fmt(v); });
-  const b=document.getElementById('estado-polla-banner');
-  if(b) b.innerHTML=`<div class="info-banner">✅ Pronósticos abiertos hasta el <strong>${cierre.toLocaleString('es-ES',{dateStyle:'medium',timeStyle:'short'})}</strong></div>`;
+
+  irA('pPregunta');
+  mostrarPreguntaActual();
 }
 
-// ══════════════════════════════════════════════════
-// RENDER INICIO
-// ══════════════════════════════════════════════════
-function renderInicio() {
-  const heroSub = document.getElementById('hero-sub-txt');
-  if (heroSub) heroSub.textContent = estado.config.nombre || 'Polla Mundial 2026';
-  if (estado.yo) {
-    document.getElementById('bloque-crear-perfil').style.display = 'none';
-    document.getElementById('bloque-perfil-existente').style.display = 'block';
-    document.getElementById('perfil-nombre-disp').textContent = estado.yo.nombre;
-    actualizarAvatarUI();
-    calcularPuntos();
-    const p = estado.participantes.find(p => p.id === estado.yo.id);
-    if (p) { document.getElementById('st-pts').textContent = p.pts||0; document.getElementById('st-exactos').textContent = p.exactos||0; }
-    const sorted = [...estado.participantes].sort((a,b)=>(b.pts||0)-(a.pts||0));
-    const pos = sorted.findIndex(p=>p.id===estado.yo.id)+1;
-    document.getElementById('st-posicion').textContent = pos>0 ? '#'+pos : '—';
-    document.getElementById('perfil-rol').textContent = pollaAbierta() ? '🟢 Pronósticos abiertos' : '🔴 Pronósticos cerrados';
-    iniciarCuentaRegresiva();
+
+/* ============================================================
+   INICIAR REPASO DE ERRORES
+   ============================================================ */
+function iniciarRepaso(mat) {
+  const pregsError = obtenerPreguntasRepaso(mat);
+  if (pregsError.length === 0) {
+    toast('✅ ¡No hay errores que repasar en esta materia!');
+    return;
+  }
+
+  modoRepaso       = true;
+  materiaActual    = mat;
+  preguntasMateria = pregsError;
+
+  const rpg = repasoProgreso[mat];
+  if (rpg && !rpg.completada) {
+    // Continuar repaso donde quedó
+    indiceActual      = rpg.indice;
+    correctasActual   = rpg.correctas;
+    incorrectasActual = rpg.incorrectas;
+    noContestadas     = rpg.noContestadas;
+    tiempoRestante    = rpg.tiempoRestante || TIEMPO_POR_PREGUNTA;
   } else {
-    document.getElementById('bloque-crear-perfil').style.display = 'block';
-    document.getElementById('bloque-perfil-existente').style.display = 'none';
-  }
-  // Actualizar estado sync
-  if (!gdrive.accessToken) {
-    const fid = cargar('gdrive_public_file_id') || cargar('gdrive_file_id');
-    if (!fid) setSyncStatus('amarillo', '📱 Modo local');
-    // Si hay file ID ya se habrá actualizado en cargarDatosPublicos
-  }
-}
-
-// ══════════════════════════════════════════════════
-// RENDER PARTIDOS
-// ══════════════════════════════════════════════════
-function renderPartidos() {
-  const abierta = pollaAbierta();
-  const yoId = estado.yo ? estado.yo.id : null;
-  const puedeEditar = yoId ? participantePuedeEditar(yoId) : false;
-  const permText = yoId ? textoPermiso(yoId) : null;
-
-  document.getElementById('sub-partidos').textContent = abierta
-    ? 'Ingresa tus pronósticos antes del cierre'
-    : puedeEditar ? '🔓 El admin te permitió actualizar tus pronósticos'
-    : '⛔ Pronósticos cerrados — pide permiso al admin para editar';
-
-  // Banner de permiso especial
-  let bannerPerm = '';
-  if (!abierta && permText) {
-    bannerPerm = `<div style="background:#e8f5e9;border-left:4px solid var(--verde);padding:12px 16px;border-radius:0 var(--radio) var(--radio) 0;margin-bottom:16px;font-size:13px;color:#2e7d32;font-weight:600;">${permText} — puedes modificar tus pronósticos</div>`;
-  } else if (!abierta && !puedeEditar && yoId) {
-    bannerPerm = `<div class="warn-banner">⏰ Los pronósticos cerraron. Si necesitas corregir algo, pídele al administrador que reabra tu acceso.</div>`;
+    // Nuevo intento de repaso — reinicia contadores pero mantiene historial anterior
+    indiceActual      = 0;
+    correctasActual   = 0;
+    incorrectasActual = 0;
+    noContestadas     = 0;
+    tiempoRestante    = TIEMPO_POR_PREGUNTA;
+    // Limpiar respuestas del repaso anterior para este intento fresco
+    repasoRespuestas[mat] = [];
+    guardarRepasoResp();
+    // Limpiar progreso para empezar fresco
+    delete repasoProgreso[mat];
+    guardarRepasoProgreso();
   }
 
-  let partidos = estado.partidos;
-  if (filtroActual==='pendiente') partidos=partidos.filter(p=>p.gols.l===null);
-  if (filtroActual==='jugado') partidos=partidos.filter(p=>p.gols.l!==null);
-  const gruposFilt = {};
-  partidos.forEach(p=>{ if(!gruposFilt[p.grupo]) gruposFilt[p.grupo]=[]; gruposFilt[p.grupo].push(p); });
-  let html = bannerPerm;
-  if (!partidos.length) { html+='<div class="empty"><span class="ico">🔍</span><p>No hay partidos con ese filtro.</p></div>'; }
-  else {
-    Object.keys(gruposFilt).sort().forEach(g => {
-      html+=`<div class="grupo-header">Grupo ${g}</div><div class="grupo-body">`;
-      gruposFilt[g].forEach(p => {
-        const pron = yoId && estado.pronosticos[yoId] ? (estado.pronosticos[yoId][p.id]||null) : null;
-        const historial = yoId && estado.historialEdiciones[yoId] ? (estado.historialEdiciones[yoId][p.id]||[]) : [];
-        const jugado = p.gols.l!==null && p.gols.v!==null;
-        const inputActivo = puedeEditar && !jugado && yoId;
-        const ecls = jugado?'estado-jugado':(abierta?'estado-pendiente':(puedeEditar?'estado-pendiente':'estado-cerrado'));
-        const etxt = jugado?'✅ Jugado':(abierta?'🔓 Abierto':(puedeEditar?'🔓 Permiso especial':'🔒 Cerrado'));
-        const fecha = new Date(p.fecha+'T12:00:00').toLocaleDateString('es-ES',{day:'numeric',month:'short'});
-        html+=`<div class="partido-card">
-          <div class="partido-header"><span class="partido-grupo">Grupo ${g} · ${fecha}</span><span class="partido-estado ${ecls}">${etxt}</span></div>
-          <div class="partido-equipos">
-            <div class="equipo"><span class="equipo-bandera">${p.local.e}</span><div class="equipo-nombre">${sanitizar(p.local.n)}</div></div>
-            <div class="marcador-wrap">
-              <input class="marcador-inp" type="number" min="0" max="99" id="m-l-${p.id}" value="${pron?pron.l:''}" placeholder="—" ${inputActivo?'':'disabled'} oninput="this.value=Math.min(99,Math.max(0,parseInt(this.value)||0))"/>
-              <span class="marcador-sep">:</span>
-              <input class="marcador-inp" type="number" min="0" max="99" id="m-v-${p.id}" value="${pron?pron.v:''}" placeholder="—" ${inputActivo?'':'disabled'} oninput="this.value=Math.min(99,Math.max(0,parseInt(this.value)||0))"/>
-            </div>
-            <div class="equipo"><span class="equipo-bandera">${p.visita.e}</span><div class="equipo-nombre">${sanitizar(p.visita.n)}</div></div>
-          </div>`;
-        if (jugado) html+=`<div style="text-align:center;margin-top:8px;font-size:12px;color:var(--texto-cla);">Resultado oficial: <strong>${p.gols.l} - ${p.gols.v}</strong></div>`;
-        if (inputActivo) html+=`<button class="btn-guardar-partido" onclick="guardarPronostico('${p.id}')">💾 Guardar pronóstico</button>`;
-        if (historial.length > 1) {
-          html+=`<div style="font-size:11px;color:var(--texto-cla);margin-top:6px;text-align:center;">✏️ Editado ${historial.length} ${historial.length===1?'vez':'veces'} · Último: ${new Date(historial[historial.length-1].fecha).toLocaleString('es-ES',{dateStyle:'short',timeStyle:'short'})}</div>`;
-        }
-        if (!yoId && abierta) html+=`<div class="info-banner" style="margin-top:8px;font-size:12px;">Crea tu perfil en Inicio para pronosticar.</div>`;
-        html+='</div></div>';
-      });
-      html+='</div>';
-    });
+  if (indiceActual >= preguntasMateria.length) {
+    // Ya estaba terminado — nuevo intento desde cero
+    indiceActual      = 0;
+    correctasActual   = 0;
+    incorrectasActual = 0;
+    noContestadas     = 0;
+    tiempoRestante    = TIEMPO_POR_PREGUNTA;
+    repasoRespuestas[mat] = [];
+    delete repasoProgreso[mat];
+    guardarRepasoProgreso();
+    guardarRepasoResp();
   }
-  document.getElementById('lista-partidos').innerHTML = html;
-}
-function filtrarPartidos(tipo, btn) {
-  filtroActual = tipo;
-  document.querySelectorAll('.filtro-btn').forEach(b=>b.classList.remove('activo'));
-  if (btn) btn.classList.add('activo');
-  renderPartidos();
-}
-async function guardarPronostico(partidoId) {
-  if (!estado.yo) { toast('⚠️ Crea tu perfil primero', 'alerta'); return; }
-  if (!participantePuedeEditar(estado.yo.id)) { toast('⛔ Los pronósticos están cerrados. Pide permiso al administrador.', 'error', 5000); return; }
-  const inpL = document.getElementById('m-l-'+partidoId);
-  const inpV = document.getElementById('m-v-'+partidoId);
-  const vl=inpL.value.trim(), vv=inpV.value.trim();
-  if (vl===''||vv==='') { toast('⚠️ Ingresa el marcador completo (local : visitante)', 'alerta'); return; }
-  const l=parseInt(vl,10), v=parseInt(vv,10);
-  if (isNaN(l)||isNaN(v)||l<0||v<0||l>99||v>99) { toast('❌ El marcador debe ser un número entre 0 y 99', 'error'); return; }
-  if (!estado.pronosticos[estado.yo.id]) estado.pronosticos[estado.yo.id]={};
-  const yaTenia = !!estado.pronosticos[estado.yo.id][partidoId];
-  // Guardar historial de ediciones
-  if (!estado.historialEdiciones[estado.yo.id]) estado.historialEdiciones[estado.yo.id]={};
-  if (!estado.historialEdiciones[estado.yo.id][partidoId]) estado.historialEdiciones[estado.yo.id][partidoId]=[];
-  estado.historialEdiciones[estado.yo.id][partidoId].push({ l, v, fecha: new Date().toISOString() });
-  estado.pronosticos[estado.yo.id][partidoId]={l,v};
-  guardarEstado();
-  toast(yaTenia?'🔄 Pronóstico actualizado':'✅ Pronóstico guardado','exito');
-  if (gdrive.accessToken) { await guardarEnNube(); }
-  else { setSyncStatus('amarillo','Guardado local — sin sincronización'); }
+
+  irA('pPregunta');
+  mostrarPreguntaActual();
 }
 
-// ══════════════════════════════════════════════════
-// PUNTOS
-// ══════════════════════════════════════════════════
-function calcularPuntos() {
-  estado.participantes.forEach(p => {
-    let pts=0, exactos=0;
-    const prons=estado.pronosticos[p.id]||{};
-    estado.partidos.forEach(par => {
-      if (par.gols.l===null||par.gols.v===null) return;
-      const pr=prons[par.id];
-      if (!pr) return;
-      if (pr.l===par.gols.l&&pr.v===par.gols.v) { pts+=3; exactos++; }
-      else {
-        const ro=Math.sign(par.gols.l-par.gols.v), rp=Math.sign(pr.l-pr.v);
-        if (ro===rp) pts+=1;
-      }
-    });
-    p.pts=pts; p.exactos=exactos;
+/* ============================================================
+   MOSTRAR PREGUNTA
+   ============================================================ */
+function mostrarPreguntaActual() {
+  const p = preguntasMateria[indiceActual];
+  if (!p) { terminarMateria(); return; }
+
+  // Banner repaso
+  const banner = document.getElementById('bannerRepaso');
+  if (modoRepaso) banner.classList.add('visible');
+  else            banner.classList.remove('visible');
+
+  // Labels cabecera
+  document.getElementById('pqMateriaLabel').textContent = modoRepaso
+    ? '🔁 ' + materiaActual
+    : materiaActual;
+  document.getElementById('pqNivelBloom').textContent   = p.nivelBloom || '';
+  document.getElementById('pqBloom').textContent        = 'Nivel: ' + (p.nivelBloom || '—');
+  document.getElementById('pqTexto').textContent        = p.pregunta;
+
+  // Contadores
+  document.getElementById('pqCorrectas').textContent   = correctasActual;
+  document.getElementById('pqIncorrectas').textContent = incorrectasActual;
+
+  // Progreso
+  const pct = Math.round(indiceActual * 100 / preguntasMateria.length);
+  document.getElementById('pqBarraProgreso').style.width = pct + '%';
+  document.getElementById('pqProgreso').textContent =
+    `${indiceActual + 1} / ${preguntasMateria.length}`;
+
+  // Opciones
+  const opcDiv = document.getElementById('pqOpciones');
+  opcDiv.innerHTML = '';
+  [['A', p.a], ['B', p.b], ['C', p.c], ['D', p.d]].forEach(([letra, texto]) => {
+    const btn = document.createElement('button');
+    btn.className = 'opcion-btn';
+    btn.dataset.letra = letra;
+    btn.innerHTML = `<span class="opcion-letra">${letra}</span><span class="opcion-texto">${texto}</span>`;
+    btn.onclick = () => responder(letra);
+    opcDiv.appendChild(btn);
   });
-  guardarEstado();
+
+  // Ocultar retro y botón siguiente
+  ocultarRetro();
+  document.getElementById('btnSiguiente').style.display = 'none';
+
+  // Scroll al inicio
+  document.getElementById('preguntaScroll').scrollTo(0, 0);
+
+  // Iniciar timer
+  iniciarTimer(tiempoRestante);
 }
 
-// ══════════════════════════════════════════════════
-// RENDER TABLA
-// ══════════════════════════════════════════════════
-function renderTabla() {
-  calcularPuntos();
-  const sorted=[...estado.participantes].sort((a,b)=>(b.pts||0)-(a.pts||0)||(b.exactos||0)-(a.exactos||0));
-  const total=estado.partidos.filter(p=>p.gols.l!==null).length;
-  document.getElementById('sub-tabla').textContent=`${total} de ${estado.partidos.length} partidos jugados`;
-  if (!sorted.length) { document.getElementById('lista-tabla').innerHTML='<div class="empty"><span class="ico">👥</span><p>Aún no hay participantes.</p></div>'; return; }
-  const trofeos=['🥇','🥈','🥉'];
-  let html=`<div class="card" style="padding:0;overflow:hidden;"><table class="tabla-pos"><thead><tr><th>#</th><th>Participante</th><th style="text-align:right">Pts</th><th style="text-align:right">Exactos</th></tr></thead><tbody>`;
-  sorted.forEach((p,i) => {
-    const esMio=estado.yo&&p.id===estado.yo.id;
-    html+=`<tr class="pos-${i+1}" style="${esMio?'background:var(--dorado-cla);':''}">
-      <td class="pos-num">${trofeos[i]||(i+1)}</td>
-      <td><div class="jugador-info"><div class="avatar-mini">${p.foto&&p.foto!=='[foto_local]'?`<img src="${p.foto}" style="width:100%;height:100%;object-fit:cover;border-radius:50%"/>`:p.nombre.charAt(0).toUpperCase()}</div>
-      <div><div class="jugador-nombre">${sanitizar(p.nombre)}${esMio?' <span style="font-size:11px;color:var(--dorado);">(tú)</span>':''}</div><div class="pts-sub">${p.exactos||0} exactos</div></div></div></td>
-      <td class="pts-badge">${p.pts||0}</td><td style="text-align:right;font-size:14px;color:var(--texto-cla);">${p.exactos||0}</td></tr>`;
-  });
-  html+='</tbody></table></div>';
-  document.getElementById('lista-tabla').innerHTML=html;
+/* ============================================================
+   TIMER
+   ============================================================ */
+function iniciarTimer(segundos) {
+  // Timer eliminado — sin límite de tiempo
 }
 
-// ══════════════════════════════════════════════════
-// RENDER PRONÓSTICOS
-// ══════════════════════════════════════════════════
-function renderPronosticos() {
-  if (!estado.yo) { document.getElementById('lista-pronosticos').innerHTML='<div class="empty"><span class="ico">🔐</span><p>Crea tu perfil en Inicio para ver tus pronósticos.</p></div>'; return; }
-  const prons=estado.pronosticos[estado.yo.id]||{};
-  const misPartidos=estado.partidos.filter(p=>prons[p.id]);
-  const pendientes=estado.partidos.filter(p=>!prons[p.id]);
-  let pts=0,exactos=0;
-  misPartidos.forEach(par => {
-    const pr=prons[par.id];
-    if (par.gols.l!==null) {
-      if (pr.l===par.gols.l&&pr.v===par.gols.v) { pts+=3; exactos++; }
-      else { const ro=Math.sign(par.gols.l-par.gols.v),rp=Math.sign(pr.l-pr.v); if(ro===rp) pts++; }
+function detenerTimer() {
+  // Timer eliminado
+}
+
+function actualizarUITimer() {
+  // Timer eliminado
+}
+
+function tiempoAgotado() {
+  // Timer eliminado — esta función ya no se llama
+}
+
+/* ============================================================
+   RESPONDER
+   ============================================================ */
+function responder(letra) {
+  detenerTimer();
+  const p = preguntasMateria[indiceActual];
+  const esCorrecta = letra === p.correcta;
+
+  if (esCorrecta) correctasActual++;
+  else incorrectasActual++;
+
+  guardarRespuestaActual(letra, esCorrecta, false);
+  guardarEstadoActual();
+
+  // Marcar botones
+  deshabilitarOpciones();
+  document.querySelectorAll('.opcion-btn').forEach(btn => {
+    if (btn.dataset.letra === letra) {
+      btn.classList.add(esCorrecta ? 'correcta' : 'incorrecta');
     }
   });
-  const pct=estado.partidos.length>0?Math.round((misPartidos.length/estado.partidos.length)*100):0;
-  let html=`<div class="card"><div class="card-titulo"><span class="ico">📋</span>Resumen</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px;">
-      <div class="stat-box"><div class="stat-num">${misPartidos.length}</div><div class="stat-lbl">Ingresados</div></div>
-      <div class="stat-box"><div class="stat-num">${exactos}</div><div class="stat-lbl">Exactos</div></div>
-      <div class="stat-box"><div class="stat-num">${pts}</div><div class="stat-lbl">Puntos</div></div>
-    </div>
-    <div style="font-size:12px;color:var(--texto-cla);margin-bottom:6px;">Progreso: ${misPartidos.length} / ${estado.partidos.length}</div>
-    <div class="barra-wrap"><div class="barra-fill" style="width:${pct}%"></div></div></div>`;
-  if (!misPartidos.length) html+='<div class="empty"><span class="ico">🎯</span><p>Aún no has ingresado pronósticos. Ve a Partidos.</p></div>';
-  else {
-    const grupos={};
-    misPartidos.forEach(p=>{if(!grupos[p.grupo])grupos[p.grupo]=[];grupos[p.grupo].push(p);});
-    Object.keys(grupos).sort().forEach(g=>{
-      html+=`<div class="grupo-header">Grupo ${g}</div><div class="grupo-body">`;
-      grupos[g].forEach(p=>{
-        const pr=prons[p.id];
-        const jugado=p.gols.l!==null;
-        let cls='pronostico-pendiente',ico='⏳',resText='';
-        if (jugado) {
-          if (pr.l===p.gols.l&&pr.v===p.gols.v){cls='pronostico-exacto';ico='🎯';resText='+3 pts';}
-          else{const ro=Math.sign(p.gols.l-p.gols.v),rp=Math.sign(pr.l-pr.v);if(ro===rp){cls='pronostico-ganador';ico='✅';resText='+1 pt';}else{cls='pronostico-fallo';ico='❌';resText='0 pts';}}
-        }
-        html+=`<div class="partido-card" style="padding:10px 14px;">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
-            <div style="flex:1;font-size:13px;">${p.local.e} ${sanitizar(p.local.n)} vs ${sanitizar(p.visita.n)} ${p.visita.e}</div>
-            <div class="pronostico-resultado ${cls}">${ico} ${pr.l}-${pr.v}</div>
-            ${jugado?`<div style="font-size:12px;font-weight:600;">${resText}</div>`:'<div style="font-size:11px;color:var(--texto-cla)">Pdte</div>'}
-          </div>
-          ${jugado?`<div style="font-size:11px;color:var(--texto-cla);margin-top:4px;">Resultado: ${p.gols.l}-${p.gols.v}</div>`:''}
-        </div>`;
-      });
-      html+='</div>';
-    });
-  }
-  if (pendientes.length>0&&pollaAbierta()) html+=`<div class="warn-banner">⚠️ Te faltan <strong>${pendientes.length}</strong> pronósticos. ¡Ve a Partidos antes del cierre!</div>`;
-  document.getElementById('lista-pronosticos').innerHTML=html;
+  if (!esCorrecta) marcarCorrecta(p.correcta);
+
+  // Mostrar retro
+  const tipo = esCorrecta ? 'correcta' : 'incorrecta';
+  mostrarRetro(tipo, letra, p.correcta, p.retro);
+
+  document.getElementById('pqCorrectas').textContent   = correctasActual;
+  document.getElementById('pqIncorrectas').textContent = incorrectasActual;
+  document.getElementById('btnSiguiente').style.display = 'flex';
+
+  // Scroll a retro
+  setTimeout(() => {
+    document.getElementById('retroCard').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, 150);
 }
 
-// ══════════════════════════════════════════════════
-// RENDER ADMIN
-// ══════════════════════════════════════════════════
-function renderAdmin() {
-  const conectado = !!gdrive.accessToken;
+function marcarCorrecta(letra) {
+  document.querySelectorAll('.opcion-btn').forEach(btn => {
+    if (btn.dataset.letra === letra) btn.classList.add('correcta');
+  });
+}
 
-  // Panel Google Drive
-  let htmlGD='';
-  if (!gdrive.clientId) {
-    htmlGD=`<div class="gdrive-panel">
-      <div class="gdrive-titulo">☁️ Conectar con Google Drive</div>
-      <div class="gdrive-info">Sincroniza la polla en la nube para que todos vean la misma tabla en tiempo real, desde cualquier dispositivo. Los participantes no necesitan hacer nada — solo tú como administrador configuras esto una vez.</div>
-      <div style="margin-top:16px;"><button class="btn btn-dorado" onclick="abrirModalClientId()">🔑 Configurar Client ID de Google</button></div>
-    </div>`;
-  } else if (!conectado) {
-    htmlGD=`<div class="gdrive-panel">
-      <div class="gdrive-titulo">☁️ Google Drive configurado</div>
-      <div class="gdrive-info">El Client ID está guardado. Inicia sesión con tu cuenta de Google para activar la sincronización.</div>
-      <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px;">
-        <button class="btn-google" onclick="loginGoogle()">
-          <svg viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
-          Iniciar sesión con Google
-        </button>
-        <button class="btn btn-ghost" onclick="abrirModalClientId()">✏️ Cambiar Client ID</button>
-      </div>
-    </div>`;
+function deshabilitarOpciones() {
+  document.querySelectorAll('.opcion-btn').forEach(b => b.disabled = true);
+}
+
+/* ============================================================
+   RETROALIMENTACIÓN
+   ============================================================ */
+function mostrarRetro(tipo, seleccionada, correcta, texto) {
+  const card   = document.getElementById('retroCard');
+  const result = document.getElementById('retroResultado');
+  const corr   = document.getElementById('retroCorrecta');
+  const retro  = document.getElementById('retroTexto');
+
+  card.className = 'retro-card show ' + tipo;
+
+  if (tipo === 'correcta') {
+    result.innerHTML = '<span>✅</span> <span style="color:var(--verde)">¡Respuesta Correcta!</span>';
+    corr.style.display = 'none';
+  } else if (tipo === 'incorrecta') {
+    result.innerHTML = '<span>❌</span> <span style="color:var(--rojo)">Respuesta Incorrecta</span>';
+    corr.style.display = 'block';
+    corr.textContent = `La respuesta correcta es: Opción ${correcta}`;
   } else {
-    const fidPublico = cargar('gdrive_public_file_id') || gdrive.fileId || cargar('gdrive_file_id');
-    htmlGD=`<div class="gdrive-panel gdrive-conectado">
-      <div class="gdrive-titulo">✅ Google Drive conectado</div>
-      <div class="gdrive-email">📧 ${sanitizar(gdrive.email||'Administrador')}</div>
-      <div class="gdrive-info" style="margin-top:8px;">Los datos se sincronizan automáticamente. Los participantes ven la tabla actualizada sin necesitar cuenta de Google.</div>
-      <div style="margin-top:12px;display:flex;gap:8px;">
-        <button class="btn btn-ghost" style="flex:1" onclick="sincronizarDesdeNube()">🔄 Sincronizar ahora</button>
-        <button class="btn btn-ghost" style="flex:1" onclick="logoutGoogle()">🚪 Cerrar sesión</button>
-      </div>
-      ${fidPublico ? `<div style="margin-top:12px;background:#e3f2fd;border-radius:var(--radio);padding:12px 14px;font-size:13px;">
-        <div style="font-weight:700;color:#1565c0;margin-bottom:4px;">📤 ID para compartir con usuarios</div>
-        <div style="color:#1976d2;margin-bottom:8px;font-size:12px;">Los usuarios deben pegarlo en Admin → "Configurar ID de archivo compartido" para ver los datos en tiempo real:</div>
-        <div style="background:#fff;border-radius:8px;padding:8px 10px;font-family:monospace;font-size:11px;word-break:break-all;color:#333;border:1px solid #90caf9;">${fidPublico}</div>
-        <button onclick="copiarFileId('${fidPublico}')" style="margin-top:8px;background:#1565c0;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;width:100%;">📋 Copiar ID</button>
-      </div>` : ''}
-    </div>`;
+    result.innerHTML = '<span>⏱️</span> <span style="color:var(--naranja)">¡Se acabó el tiempo!</span>';
+    corr.style.display = 'block';
+    corr.textContent = `La respuesta correcta era: Opción ${correcta}`;
   }
-  document.getElementById('bloque-gdrive').innerHTML = htmlGD;
 
-  // Mostrar resto del panel solo si hay client ID
-  const mostrar = !!gdrive.clientId;
-  ['bloque-config','bloque-participantes','bloque-resultados','bloque-acciones','bloque-permisos'].forEach(id => {
-    document.getElementById(id).style.display = mostrar ? 'block' : 'none';
-  });
-  // Bloque de file ID para usuario: ocultar si es admin
-  const bfid = document.getElementById('bloque-file-id-usuario');
-  if (bfid) bfid.style.display = mostrar ? 'none' : 'block';
-  if (!mostrar) return;
+  retro.textContent = texto || '—';
+}
 
-  // Config
-  const ci=document.getElementById('inp-fecha-cierre'); if(ci) ci.value=estado.config.fechaCierre||'';
-  const np=document.getElementById('inp-nombre-polla'); if(np) np.value=estado.config.nombre||'';
+function ocultarRetro() {
+  const card = document.getElementById('retroCard');
+  card.className = 'retro-card';
+  document.getElementById('retroCorrecta').style.display = 'none';
+}
 
-  // Participantes
-  calcularPuntos();
-  const sorted=[...estado.participantes].sort((a,b)=>(b.pts||0)-(a.pts||0));
-  let htmlP='';
-  if (!sorted.length) htmlP='<div class="empty" style="padding:16px 0;"><p>Aún no hay participantes.</p></div>';
-  else sorted.forEach(p=>{
-    const esMio=estado.yo&&p.id===estado.yo.id;
-    htmlP+=`<div class="admin-row">
-      <div class="jugador-info" style="gap:10px;">
-        <div class="avatar-mini">${p.foto&&p.foto!=='[foto_local]'?`<img src="${p.foto}" style="width:100%;height:100%;object-fit:cover;border-radius:50%"/>`:p.nombre.charAt(0).toUpperCase()}</div>
-        <div><div class="admin-lbl">${sanitizar(p.nombre)} ${esMio?'<span class="chip chip-verde">Tú</span>':''}</div>
-        <div class="admin-val">${p.pts||0} pts · ${Object.keys(estado.pronosticos[p.id]||{}).length} pronósticos</div></div>
-      </div>
-      ${!esMio?`<button onclick="eliminarParticipante('${p.id}')" style="background:none;border:none;cursor:pointer;color:var(--rojo);font-size:18px;">🗑️</button>`:''}
-    </div>`;
-  });
-  document.getElementById('lista-participantes-admin').innerHTML=htmlP;
+/* ============================================================
+   SIGUIENTE PREGUNTA
+   ============================================================ */
+function siguientePregunta() {
+  indiceActual++;
+  tiempoRestante = TIEMPO_POR_PREGUNTA;
 
-  // Permisos por participante
-  if (!pollaAbierta()) {
-    const todosAb = estado.permisos && estado.permisos.todosAbiertos;
-    let htmlPerm = '';
-    if (todosAb) {
-      htmlPerm = `<div style="background:#e8f5e9;border-radius:var(--radio);padding:10px 14px;margin-bottom:12px;font-size:13px;font-weight:600;color:#2e7d32;">🔓 Todos los participantes tienen acceso abierto actualmente</div>`;
-    }
-    sorted.forEach(p => {
-      const indAb = estado.permisos && estado.permisos.individuales && estado.permisos.individuales[p.id];
-      const abierto = todosAb || (indAb && indAb.abierto);
-      htmlPerm += `<div class="admin-row">
-        <div>
-          <div class="admin-lbl">${sanitizar(p.nombre)}</div>
-          <div class="admin-val">${abierto ? '🔓 Puede editar pronósticos' : '🔒 Cerrado'}</div>
-        </div>
-        ${abierto && !todosAb
-          ? `<button onclick="cerrarIndividual('${p.id}')" class="chip chip-rojo" style="cursor:pointer;border:none;padding:6px 12px;">Cerrar</button>`
-          : !todosAb ? `<button onclick="reabrirIndividual('${p.id}')" class="chip chip-verde" style="cursor:pointer;border:none;padding:6px 12px;">Reabrir</button>` : ''
-        }
+  if (indiceActual >= preguntasMateria.length) {
+    terminarMateria();
+  } else {
+    guardarEstadoActual();
+    mostrarPreguntaActual();
+  }
+}
+
+/* ============================================================
+   TERMINAR MATERIA
+   ============================================================ */
+function terminarMateria() {
+  detenerTimer();
+  const estadoFinal = {
+    indice:        preguntasMateria.length,
+    correctas:     correctasActual,
+    incorrectas:   incorrectasActual,
+    noContestadas,
+    completada:    true,
+    tiempoRestante: TIEMPO_POR_PREGUNTA
+  };
+  if (modoRepaso) {
+    repasoProgreso[materiaActual] = estadoFinal;
+    guardarRepasoProgreso();
+    verResultadoRepaso(materiaActual);
+  } else {
+    progreso[materiaActual] = estadoFinal;
+    guardarProgreso();
+    verResultado(materiaActual);
+  }
+}
+
+/* ============================================================
+   GUARDAR ESTADO INTERMEDIO
+   ============================================================ */
+function guardarEstadoActual() {
+  const estado = {
+    indice:        indiceActual,
+    correctas:     correctasActual,
+    incorrectas:   incorrectasActual,
+    noContestadas,
+    completada:    false,
+    tiempoRestante
+  };
+  if (modoRepaso) {
+    repasoProgreso[materiaActual] = estado;
+    guardarRepasoProgreso();
+  } else {
+    progreso[materiaActual] = estado;
+    guardarProgreso();
+  }
+}
+
+function guardarRespuestaActual(resp, esCorrecta, agotado) {
+  const p = preguntasMateria[indiceActual];
+  const entrada = {
+    preguntaId: p.id,
+    n: p.n,
+    pregunta: p.pregunta,
+    respuesta: resp,
+    correcta: p.correcta,
+    esCorrecta,
+    agotado,
+    retro: p.retro
+  };
+  if (modoRepaso) {
+    if (!repasoRespuestas[materiaActual]) repasoRespuestas[materiaActual] = [];
+    repasoRespuestas[materiaActual].push(entrada);
+    guardarRepasoResp();
+  } else {
+    if (!respuestas[materiaActual]) respuestas[materiaActual] = [];
+    respuestas[materiaActual].push(entrada);
+    guardarRespuestas();
+  }
+}
+
+/* ============================================================
+   PANTALLA RESULTADO
+   ============================================================ */
+function verResultado(mat) {
+  materiaResultadoActual = mat;
+  modoRepaso = false;
+  const pg    = progreso[mat] || {};
+  const total = banco.filter(p => p.materia === mat).length;
+  const correctas = pg.correctas || 0;
+  const pct   = total > 0 ? Math.round(correctas * 100 / total) : 0;
+
+  document.getElementById('resMateria').textContent     = mat;
+  document.getElementById('resCalificacion').textContent= `${correctas} / ${total}`;
+  document.getElementById('resPct').textContent         = pct + '%';
+
+  // Animate bar after nav
+  setTimeout(() => {
+    document.getElementById('resBarraFill').style.width = pct + '%';
+  }, 100);
+
+  // Color calificación
+  const cal = document.getElementById('resCalificacion');
+  if (pct >= 70)      cal.style.color = '#8effc2';
+  else if (pct >= 50) cal.style.color = var_css('--dorado-claro');
+  else                cal.style.color = '#ffaaaa';
+
+  // Lista de respuestas
+  const lista = document.getElementById('listaResultados');
+  lista.innerHTML = '';
+
+  const resps = respuestas[mat] || [];
+  const pregs = banco.filter(p => p.materia === mat).sort((a,b) => a.n - b.n);
+
+  pregs.forEach(p => {
+    const r = resps.find(x => x.preguntaId === p.id);
+    const esCorrecta  = r && r.esCorrecta;
+    const agotado     = r && r.agotado;
+    const noContest   = !r;
+
+    let icono = '❌', estadoClass = 'estado-mal', estadoTxt = 'Incorrecta';
+    if (esCorrecta)   { icono = '✅'; estadoClass = 'estado-ok';    estadoTxt = 'Correcta'; }
+    if (agotado)      { icono = '⏱️'; estadoClass = 'estado-tiempo'; estadoTxt = 'Tiempo agotado'; }
+    if (noContest)    { icono = '⬜'; estadoClass = 'estado-tiempo'; estadoTxt = 'No contestada'; }
+
+    let respInfo = '';
+    if (!esCorrecta && r) {
+      respInfo = `<div class="resultado-item-respuesta">
+        Tu respuesta: Opción ${r.respuesta === 'TIEMPO' ? '—' : r.respuesta} &nbsp;|&nbsp; Correcta: Opción ${p.correcta}
       </div>`;
-    });
-    document.getElementById('lista-permisos-admin').innerHTML = htmlPerm || '<div style="color:var(--texto-cla);font-size:13px;padding:8px 0;">No hay participantes aún.</div>';
+    }
+
+    const item = document.createElement('div');
+    item.className = 'resultado-item';
+    item.innerHTML = `
+      <div class="resultado-item-header" onclick="toggleResultado(this)">
+        <div class="resultado-item-icono">${icono}</div>
+        <div class="resultado-item-info">
+          <div class="resultado-item-num">Pregunta ${p.n}</div>
+          <div class="resultado-item-estado ${estadoClass}">${estadoTxt}</div>
+        </div>
+        <div class="resultado-item-toggle">▼</div>
+      </div>
+      <div class="resultado-item-body">
+        <div class="resultado-item-pregunta">${p.pregunta}</div>
+        ${respInfo}
+        <div class="resultado-item-retro">${p.retro || '—'}</div>
+      </div>`;
+    lista.appendChild(item);
+  });
+
+  // Mostrar botón de repaso si hay errores
+  const erroresIds = obtenerIdsErrores(mat);
+  const btnRepasoWrap = document.getElementById('btnRepasoWrap');
+  const cntErrores    = document.getElementById('cntErroresRepaso');
+  const resHeaderEl   = document.querySelector('#pResultado .resultado-header');
+  resHeaderEl.classList.remove('repaso-header');
+  if (erroresIds.length > 0) {
+    btnRepasoWrap.style.display = 'block';
+    cntErrores.textContent = erroresIds.length;
   } else {
-    document.getElementById('lista-permisos-admin').innerHTML = '<div class="info-banner" style="margin-bottom:0;">La polla está abierta — todos pueden editar. Los permisos individuales aplican solo después del cierre.</div>';
+    btnRepasoWrap.style.display = 'none';
   }
 
-  // Resultados
-  const grupos={};
-  estado.partidos.forEach(p=>{if(!grupos[p.grupo])grupos[p.grupo]=[];grupos[p.grupo].push(p);});
-  let htmlR='<div class="card"><div class="card-titulo"><span class="ico">📋</span>Ingresar resultados oficiales</div>';
-  if (!conectado) htmlR+='<div class="warn-banner">⚠️ Conéctate a Google Drive para que los resultados se guarden en la nube y todos los vean.</div>';
-  Object.keys(grupos).sort().forEach(g=>{
-    htmlR+=`<div class="grupo-header" style="margin-bottom:0;border-radius:var(--radio) var(--radio) 0 0;">Grupo ${g}</div><div class="grupo-body" style="margin-bottom:12px;">`;
-    grupos[g].forEach(p=>{
-      const jugado=p.gols.l!==null;
-      htmlR+=`<div class="partido-card" style="padding:10px 14px;">
-        <div style="font-size:12px;color:var(--texto-cla);margin-bottom:8px;">${p.local.e} ${sanitizar(p.local.n)} vs ${sanitizar(p.visita.n)} ${p.visita.e}</div>
-        <div class="marcador-wrap" style="justify-content:center;">
-          <input class="marcador-inp" type="number" min="0" max="99" id="r-l-${p.id}" value="${jugado?p.gols.l:''}" placeholder="—" oninput="this.value=Math.min(99,Math.max(0,parseInt(this.value)||0))"/>
-          <span class="marcador-sep">:</span>
-          <input class="marcador-inp" type="number" min="0" max="99" id="r-v-${p.id}" value="${jugado?p.gols.v:''}" placeholder="—" oninput="this.value=Math.min(99,Math.max(0,parseInt(this.value)||0))"/>
-        </div>
-        <button class="btn-guardar-partido" style="background:var(--verde);color:#fff;" onclick="guardarResultado('${p.id}')">
-          ${jugado?'🔄 Actualizar':'✅ Guardar resultado'}
-        </button>
+  irA('pResultado');
+}
+
+/* ============================================================
+   RESULTADO REPASO
+   ============================================================ */
+function verResultadoRepaso(mat) {
+  materiaResultadoActual = mat;
+  const rpg    = repasoProgreso[mat] || {};
+  const pregsR = obtenerPreguntasRepaso(mat);
+  const total  = pregsR.length;
+  const correctas = rpg.correctas || 0;
+  const pct    = total > 0 ? Math.round(correctas * 100 / total) : 0;
+
+  // Header con estilo naranja
+  document.getElementById('resMateria').textContent      = '🔁 Repaso — ' + mat;
+  document.getElementById('resCalificacion').textContent = correctas + ' / ' + total;
+  document.getElementById('resPct').textContent          = pct + '%';
+
+  const resHeaderEl = document.querySelector('#pResultado .resultado-header');
+  resHeaderEl.classList.add('repaso-header');
+
+  setTimeout(() => {
+    document.getElementById('resBarraFill').style.width = pct + '%';
+  }, 100);
+
+  const cal = document.getElementById('resCalificacion');
+  cal.style.color = pct >= 70 ? '#8effc2' : pct >= 50 ? '#e8d08a' : '#ffaaaa';
+
+  // Comparación con intento original
+  const pgOrig  = progreso[mat] || {};
+  const totOrig = banco.filter(p => p.materia === mat).length;
+  const pctOrig = totOrig > 0 ? Math.round((pgOrig.correctas||0) * 100 / totOrig) : 0;
+
+  document.getElementById('resultado-cal-label-el') &&
+    (document.getElementById('resultado-cal-label-el').textContent = 'correctas en repaso');
+
+  // Lista de resultados del repaso
+  const lista = document.getElementById('listaResultados');
+  lista.innerHTML = '';
+
+  // Comparación al inicio
+  const compDiv = document.createElement('div');
+  compDiv.className = 'resultado-repaso-comparacion';
+  compDiv.innerHTML = `
+    <div>📊 <strong>Intento original:</strong> ${pgOrig.correctas||0} / ${totOrig} (${pctOrig}%)</div>
+    <div>🔁 <strong>Este repaso:</strong> ${correctas} / ${total} (${pct}%)</div>`;
+  lista.appendChild(compDiv);
+
+  const respsRepaso = repasoRespuestas[mat] || [];
+  pregsR.forEach(p => {
+    const r = respsRepaso.find(x => x.preguntaId === p.id);
+    const esCorrecta = r && r.esCorrecta;
+    const agotado    = r && r.agotado;
+
+    let icono = '❌', estadoClass = 'estado-mal', estadoTxt = 'Incorrecta';
+    if (esCorrecta)  { icono = '✅'; estadoClass = 'estado-ok';    estadoTxt = 'Correcta en repaso'; }
+    if (agotado)     { icono = '⏱️'; estadoClass = 'estado-tiempo'; estadoTxt = 'Tiempo agotado'; }
+
+    let respInfo = '';
+    if (!esCorrecta && r) {
+      respInfo = `<div class="resultado-item-respuesta">
+        Tu respuesta: Opción ${r.respuesta === 'TIEMPO' ? '—' : r.respuesta} &nbsp;|&nbsp; Correcta: Opción ${p.correcta}
       </div>`;
-    });
-    htmlR+='</div>';
+    }
+
+    const item = document.createElement('div');
+    item.className = 'resultado-item';
+    item.innerHTML = `
+      <div class="resultado-item-header" onclick="toggleResultado(this)">
+        <div class="resultado-item-icono">${icono}</div>
+        <div class="resultado-item-info">
+          <div class="resultado-item-num">Pregunta ${p.n}</div>
+          <div class="resultado-item-estado ${estadoClass}">${estadoTxt}</div>
+        </div>
+        <div class="resultado-item-toggle">▼</div>
+      </div>
+      <div class="resultado-item-body">
+        <div class="resultado-item-pregunta">${p.pregunta}</div>
+        ${respInfo}
+        <div class="resultado-item-retro">${p.retro || '—'}</div>
+      </div>`;
+    lista.appendChild(item);
   });
-  htmlR+='</div>';
-  document.getElementById('bloque-resultados').innerHTML=htmlR;
+
+  // Botón de nuevo repaso (ilimitado)
+  const btnRepasoWrap = document.getElementById('btnRepasoWrap');
+  const cntErrores    = document.getElementById('cntErroresRepaso');
+  const erroresNuevos = obtenerIdsErroresRepaso(mat);
+  if (erroresNuevos.length > 0) {
+    btnRepasoWrap.style.display = 'block';
+    cntErrores.textContent = erroresNuevos.length;
+    document.querySelector('#btnRepasoWrap .btn-repaso').onclick = () => iniciarRepasoDeRepaso(mat);
+    document.querySelector('#btnRepasoWrap .btn-repaso').innerHTML =
+      '🔁 Repasar errores del repaso (<span id="cntErroresRepaso">' + erroresNuevos.length + '</span> preguntas)';
+  } else {
+    btnRepasoWrap.style.display = 'none';
+  }
+
+  irA('pResultado');
 }
 
-async function guardarResultado(partidoId) {
-  const inpL=document.getElementById('r-l-'+partidoId), inpV=document.getElementById('r-v-'+partidoId);
-  const vl=inpL.value.trim(), vv=inpV.value.trim();
-  if (vl===''||vv==='') { toast('⚠️ Ingresa el marcador completo','alerta'); return; }
-  const l=parseInt(vl,10), v=parseInt(vv,10);
-  if (isNaN(l)||isNaN(v)||l<0||v<0||l>99||v>99) { toast('❌ Marcador debe estar entre 0 y 99','error'); return; }
-  const par=estado.partidos.find(p=>p.id===partidoId);
-  if (!par) return;
-  par.gols={l,v};
-  calcularPuntos();
-  guardarEstado();
-  toast(`✅ ${par.local.n} ${l}-${v} ${par.visita.n} guardado`,'exito',4000);
-  if (gdrive.accessToken) { spinner(true,'Actualizando en la nube...'); await guardarEnNube(); spinner(false); toast('☁️ Resultado publicado en la nube — todos lo verán','exito',4000); }
-  else { toast('⚠️ Guardado solo localmente. Conéctate a Drive para publicarlo.','alerta',5000); }
-  renderAdmin();
+// IDs de errores del último repaso
+function obtenerIdsErroresRepaso(mat) {
+  const resps = repasoRespuestas[mat] || [];
+  return resps.filter(r => !r.esCorrecta).map(r => r.preguntaId);
 }
 
-async function guardarConfig() {
-  const fechaVal=document.getElementById('inp-fecha-cierre').value;
-  const nombreVal=document.getElementById('inp-nombre-polla').value.trim();
-  if (!fechaVal) { marcarError('campo-fecha-cierre','Selecciona una fecha válida.'); toast('⚠️ Debes ingresar una fecha de cierre','alerta'); return; }
-  limpiarError('campo-fecha-cierre');
-  estado.config.fechaCierre=fechaVal;
-  estado.config.nombre=sanitizar(nombreVal)||'Polla Mundial 2026';
-  guardarEstado();
-  if (gdrive.accessToken) { spinner(true,'Guardando...'); await guardarEnNube(); spinner(false); }
-  toast('💾 Configuración guardada','exito');
-  renderInicio();
-}
-
-function abrirAgregarParticipante() {
-  document.getElementById('inp-np-nombre').value=''; limpiarError('campo-np');
-  document.getElementById('modalParticipante').classList.add('activo');
-}
-function cerrarModalParticipante() { document.getElementById('modalParticipante').classList.remove('activo'); }
-async function guardarParticipante() {
-  const nombre=document.getElementById('inp-np-nombre').value.trim();
-  if (nombre.length<2) { marcarError('campo-np','El nombre debe tener al menos 2 caracteres.'); toast('⚠️ Escribe un nombre válido','alerta'); return; }
-  limpiarError('campo-np');
-  const nuevo={id:'p_'+Date.now(),nombre:sanitizar(nombre),foto:null,pts:0,exactos:0};
-  estado.participantes.push(nuevo);
-  guardarEstado();
-  cerrarModalParticipante();
-  if (gdrive.accessToken) { spinner(true,'Guardando...'); await guardarEnNube(); spinner(false); }
-  toast(`✅ ${sanitizar(nombre)} agregado`,'exito');
-  renderAdmin();
-}
-function eliminarParticipante(id) {
-  const p=estado.participantes.find(x=>x.id===id);
-  if (!p) return;
-  confirmar('¿Eliminar participante?',`Se eliminará a "${p.nombre}" y todos sus pronósticos.`, async () => {
-    estado.participantes=estado.participantes.filter(x=>x.id!==id);
-    delete estado.pronosticos[id];
-    guardarEstado();
-    if (gdrive.accessToken) { await guardarEnNube(); }
-    toast('🗑️ Participante eliminado','info');
-    renderAdmin();
+// Repaso de un repaso — usa los errores del último repaso como nueva fuente
+function iniciarRepasoDeRepaso(mat) {
+  const idsError = obtenerIdsErroresRepaso(mat);
+  if (idsError.length === 0) {
+    toast('✅ ¡Sin errores en el repaso!');
+    return;
+  }
+  // Convertir los errores del repaso en la nueva fuente de respuestas "originales"
+  // Actualizamos respuestas[mat] para que incluya los errores del repaso
+  // de modo que obtenerPreguntasRepaso() los recoja
+  const respsRepaso = repasoRespuestas[mat] || [];
+  // Marcar en respuestas originales los que siguen incorrectos
+  respsRepaso.forEach(rr => {
+    if (!rr.esCorrecta && respuestas[mat]) {
+      const idx = respuestas[mat].findIndex(r => r.preguntaId === rr.preguntaId);
+      if (idx >= 0) respuestas[mat][idx].esCorrecta = false;
+    }
   });
-}
-function confirmarResetear() {
-  confirmar('⚠️ Reiniciar polla','Se borrarán TODOS los datos. Esta acción no se puede deshacer.',()=>{
-    localStorage.removeItem(`${APP_KEY}_estado`);
-    localStorage.removeItem(`${APP_KEY}_partidos_version`);
-    location.reload();
-  });
+  guardarRespuestas();
+  // Iniciar nuevo repaso desde cero
+  repasoRespuestas[mat] = [];
+  delete repasoProgreso[mat];
+  guardarRepasoResp();
+  guardarRepasoProgreso();
+  iniciarRepaso(mat);
 }
 
-async function resetearPartidos() {
+
+function var_css(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+
+function toggleResultado(header) {
+  const body   = header.nextElementSibling;
+  const toggle = header.querySelector('.resultado-item-toggle');
+  const abierto = body.classList.toggle('abierto');
+  toggle.textContent = abierto ? '▲' : '▼';
+}
+
+/* ============================================================
+   RESET
+   ============================================================ */
+function resetearTodo() {
+  progreso         = {};
+  respuestas       = {};
+  repasoProgreso   = {};
+  repasoRespuestas = {};
+  guardarProgreso();
+  guardarRespuestas();
+  guardarRepasoProgreso();
+  guardarRepasoResp();
+  actualizarUIInicio();
+  toast('✅ Progreso reseteado correctamente');
+}
+
+function confirmarResetMateria(mat) {
   confirmar(
-    '🗂️ Restablecer partidos oficiales',
-    'Se reemplazarán los partidos con el fixture oficial del Mundial 2026. Los participantes, pronósticos y resultados ya ingresados se conservan. ¿Continuar?',
-    async () => {
-      estado.partidos = JSON.parse(JSON.stringify(PARTIDOS_INICIAL));
-      guardar('partidos_version', PARTIDOS_VERSION);
-      guardarEstado();
-      if (gdrive.accessToken) { spinner(true,'Actualizando en la nube...'); await guardarEnNube(); spinner(false); }
-      toast('✅ Partidos restablecidos con los grupos oficiales 2026', 'exito', 5000);
-      renderAdmin();
+    `Resetear "${mat}"`,
+    `¿Borrar el progreso de esta materia? Se borrará también el historial de repaso.`,
+    () => {
+      delete progreso[mat];
+      delete respuestas[mat];
+      delete repasoProgreso[mat];
+      delete repasoRespuestas[mat];
+      guardarProgreso();
+      guardarRespuestas();
+      guardarRepasoProgreso();
+      guardarRepasoResp();
+      renderMaterias();
+      toast('✅ Materia reseteada');
     }
   );
 }
-async function recalcularPuntos() {
-  calcularPuntos();
-  if (gdrive.accessToken) { await guardarEnNube(); }
-  toast('🔄 Puntos recalculados','exito');
-  renderAdmin();
+
+/* ============================================================
+   NAVEGACIÓN
+   ============================================================ */
+function irA(pantallaId) {
+  document.querySelectorAll('.pantalla').forEach(p => p.classList.remove('activa'));
+  document.getElementById(pantallaId).classList.add('activa');
+  window.scrollTo(0, 0);
+
+  if (pantallaId === 'pMaterias') renderMaterias();
 }
 
-// ══════════════════════════════════════════════════
-// PERMISOS — REABRIR PRONÓSTICOS (ADMIN)
-// ══════════════════════════════════════════════════
-async function reabrirTodos() {
-  if (!estado.permisos) estado.permisos = { todosAbiertos: false, individuales: {} };
-  estado.permisos.todosAbiertos = true;
-  guardarEstado();
-  if (gdrive.accessToken) { spinner(true,'Publicando permiso...'); await guardarEnNube(); spinner(false); }
-  toast('🔓 Pronósticos reabiertos para TODOS', 'exito', 5000);
-  renderAdmin();
-}
-async function cerrarTodos() {
-  if (!estado.permisos) estado.permisos = { todosAbiertos: false, individuales: {} };
-  estado.permisos.todosAbiertos = false;
-  estado.permisos.individuales = {};
-  guardarEstado();
-  if (gdrive.accessToken) { spinner(true,'Cerrando accesos...'); await guardarEnNube(); spinner(false); }
-  toast('🔒 Todos los pronósticos vuelven a estar cerrados', 'info', 4000);
-  renderAdmin();
-}
-async function reabrirIndividual(participanteId) {
-  if (!estado.permisos) estado.permisos = { todosAbiertos: false, individuales: {} };
-  const p = estado.participantes.find(x => x.id === participanteId);
-  if (!p) return;
-  estado.permisos.individuales[participanteId] = {
-    abierto: true, fecha: new Date().toISOString(), otorgadoPor: gdrive.email || 'Admin'
-  };
-  guardarEstado();
-  if (gdrive.accessToken) { spinner(true,'Publicando permiso...'); await guardarEnNube(); spinner(false); }
-  toast(`🔓 Permiso otorgado a ${p.nombre}`, 'exito', 4000);
-  renderAdmin();
-}
-async function cerrarIndividual(participanteId) {
-  if (!estado.permisos || !estado.permisos.individuales) return;
-  delete estado.permisos.individuales[participanteId];
-  guardarEstado();
-  if (gdrive.accessToken) { await guardarEnNube(); }
-  const p = estado.participantes.find(x => x.id === participanteId);
-  toast(`🔒 Permiso revocado a ${p ? p.nombre : 'usuario'}`, 'info');
-  renderAdmin();
+function salirDePregunta() {
+  detenerTimer();
+  guardarEstadoActual();
+  modoRepaso = false;
+  irA('pMaterias');
 }
 
-// ══════════════════════════════════════════════════
-// COMPARTIR FILE ID (para usuarios sin ser admin)
-// ══════════════════════════════════════════════════
-function copiarFileId(fid) {
-  navigator.clipboard.writeText(fid).then(() => {
-    toast('📋 ID copiado al portapapeles', 'exito');
-  }).catch(() => {
-    // Fallback para móviles
-    const el = document.createElement('textarea');
-    el.value = fid;
-    document.body.appendChild(el);
-    el.select();
-    document.execCommand('copy');
-    document.body.removeChild(el);
-    toast('📋 ID copiado', 'exito');
-  });
+/* ============================================================
+   MODAL CONFIRMACIÓN
+   ============================================================ */
+function confirmar(titulo, texto, callback) {
+  document.getElementById('modalTitulo').textContent = titulo;
+  document.getElementById('modalTexto').textContent  = texto;
+  document.getElementById('modalConfirmar').onclick  = () => { cerrarModal(); callback(); };
+  document.getElementById('modalOverlay').classList.add('activo');
+}
+function cerrarModal() {
+  document.getElementById('modalOverlay').classList.remove('activo');
 }
 
-function abrirModalFileId() {
-  document.getElementById('inp-file-id-usuario').value = cargar('gdrive_public_file_id') || '';
-  document.getElementById('modalFileId').classList.add('activo');
-}
-function cerrarModalFileId() { document.getElementById('modalFileId').classList.remove('activo'); }
-async function guardarFileIdUsuario() {
-  const val = document.getElementById('inp-file-id-usuario').value.trim();
-  if (!val || val.length < 10) { toast('⚠️ Pega el ID que te dio el administrador', 'alerta'); return; }
-  guardar('gdrive_public_file_id', val);
-  cerrarModalFileId();
-  toast('🔄 Cargando datos del grupo...', 'info');
-  await cargarDatosPublicos();
-  renderInicio();
-  renderAdmin();
+/* ============================================================
+   TOAST
+   ============================================================ */
+function toast(msg, dur = 3000) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), dur);
 }
 
-// ══════════════════════════════════════════════════
-// ARRANQUE
-// ══════════════════════════════════════════════════
-cargarEstado();
-renderInicio();
-iniciarAutoSync();
+/* ============================================================
+   SPINNER
+   ============================================================ */
+function mostrarSpinner(show) {
+  const s = document.getElementById('spinner');
+  s.className = show ? 'show' : '';
+}
 
-// Al cargar: todos los usuarios intentan bajar datos de Drive (sin login)
-// El admin además reconecta su sesión si tiene token vigente
-window.addEventListener('load', () => {
-  setTimeout(async () => {
-    if (gdrive.clientId) inicializarGSI();
-    const exp = cargar('gdrive_token_exp');
-    const tieneToken = exp && Date.now() < exp;
-    if (!tieneToken) {
-      // Usuario normal: leer datos públicos de Drive
-      await cargarDatosPublicos();
-    } else {
-      setSyncStatus('amarillo', 'Reconectando con Drive...');
-    }
-  }, 1200);
+/* ============================================================
+   DRAG & DROP en zona de carga
+   ============================================================ */
+const uploadZona = document.getElementById('uploadZona');
+uploadZona.addEventListener('dragover', e => { e.preventDefault(); uploadZona.classList.add('drag'); });
+uploadZona.addEventListener('dragleave', () => uploadZona.classList.remove('drag'));
+uploadZona.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadZona.classList.remove('drag');
+  const file = e.dataTransfer.files[0];
+  if (file) {
+    const input = document.getElementById('inputExcel');
+    // Simular selección
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    input.files = dt.files;
+    cargarExcel(input);
+  }
 });
+
+/* ============================================================
+   INIT
+   ============================================================ */
+window.addEventListener('load', () => {
+  cargarDesdeStorage();
+  actualizarUIInicio();
+});
+
+// Timer eliminado — sin pausa de visibilidad necesaria
+
+/* ============================================================
+   ANDROID WEBVIEW BRIDGE
+   Detecta si corre dentro de un WebView Android y usa
+   la interfaz nativa para abrir el selector de archivos.
+   ============================================================ */
+const ES_ANDROID_WEBVIEW = (typeof Android !== 'undefined');
+
+function abrirSelectorArchivo() {
+  if (ES_ANDROID_WEBVIEW) {
+    // Llama al método nativo de Android
+    Android.abrirSelectorExcel();
+  } else {
+    // Navegador normal — selector HTML estándar
+    document.getElementById('inputExcel').click();
+  }
+}
+
+// Llamado desde Android cuando el usuario selecciona un archivo
+// El contenido viene en base64
+function recibirArchivoDesdeAndroid(base64Data, nombreArchivo) {
+  mostrarSpinner(true);
+  try {
+    const wb   = XLSX.read(base64Data, { type: 'base64' });
+    const ws   = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+    const nuevas = [];
+    for (let i = 1; i < rows.length; i++) {
+      const r = rows[i];
+      const id = parseInt(r[0]);
+      if (isNaN(id) || !r[4]) continue;
+      const correcta = String(r[9]).trim().toUpperCase();
+      if (!['A','B','C','D'].includes(correcta)) continue;
+      nuevas.push({
+        id,
+        materia:   String(r[1]).trim(),
+        nivelBloom:String(r[2]).trim(),
+        n:         parseInt(r[3]) || i,
+        pregunta:  String(r[4]).trim(),
+        a:         String(r[5]).trim(),
+        b:         String(r[6]).trim(),
+        c:         String(r[7]).trim(),
+        d:         String(r[8]).trim(),
+        correcta,
+        retro:     String(r[10]).trim()
+      });
+    }
+
+    if (nuevas.length === 0) {
+      mostrarSpinner(false);
+      toast('❌ No se encontraron preguntas válidas');
+      return;
+    }
+
+    banco = nuevas;
+    progreso = {};
+    respuestas = {};
+    guardarBanco();
+    guardarProgreso();
+    guardarRespuestas();
+    actualizarUIInicio();
+    mostrarSpinner(false);
+    toast('✅ ' + nuevas.length + ' preguntas cargadas');
+
+  } catch(err) {
+    mostrarSpinner(false);
+    toast('❌ Error al leer el archivo: ' + err.message);
+    console.error(err);
+  }
+}
+
 </script>
 </body>
 </html>
